@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 // Event represents an event row joined with medication name.
@@ -25,15 +27,15 @@ type EventHandler struct {
 }
 
 // ListEvents — GET /api/events?days=7
-func (h *EventHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
+func (h *EventHandler) ListEvents(c *gin.Context) {
 	days := 7
-	if d := r.URL.Query().Get("days"); d != "" {
+	if d := c.Query("days"); d != "" {
 		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 {
 			days = parsed
 		}
 	}
 
-	rows, err := h.DB.QueryContext(r.Context(), `
+	rows, err := h.DB.QueryContext(c.Request.Context(), `
 		SELECT e.id, e.medication_id, m.name,
 		       e.schedule_id, e.scheduled_at,
 		       COALESCE(e.completed_at,''), e.status, e.confirmed_by_device
@@ -42,7 +44,7 @@ func (h *EventHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		WHERE e.scheduled_at >= datetime('now', '-' || ? || ' days')
 		ORDER BY e.scheduled_at DESC`, days)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "query events: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "query events: " + err.Error()})
 		return
 	}
 	defer rows.Close()
@@ -53,7 +55,7 @@ func (h *EventHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		var sid sql.NullInt64
 		if err := rows.Scan(&ev.ID, &ev.MedicationID, &ev.MedicationName,
 			&sid, &ev.ScheduledAt, &ev.CompletedAt, &ev.Status, &ev.ConfirmedByDevice); err != nil {
-			httpError(w, http.StatusInternalServerError, "scan: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "scan: " + err.Error()})
 			return
 		}
 		if sid.Valid {
@@ -61,12 +63,12 @@ func (h *EventHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		events = append(events, ev)
 	}
-	writeJSON(w, http.StatusOK, events)
+	c.JSON(http.StatusOK, events)
 }
 
 // GetStatus — GET /api/status
-func (h *EventHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+func (h *EventHandler) GetStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
 		"deviceConnected": h.Hub.DeviceConnected(),
 		"pendingCount":    h.Hub.PendingCount(),
 	})
@@ -74,10 +76,10 @@ func (h *EventHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 
 // DebugTrigger — POST /api/debug/trigger
 // Fires the first active schedule immediately for demo/testing purposes.
-func (h *EventHandler) DebugTrigger(w http.ResponseWriter, r *http.Request) {
+func (h *EventHandler) DebugTrigger(c *gin.Context) {
 	var medID, schedID int64
 	var medName string
-	err := h.DB.QueryRowContext(r.Context(), `
+	err := h.DB.QueryRowContext(c.Request.Context(), `
 		SELECT s.medication_id, s.id, m.name
 		FROM schedules s
 		JOIN medications m ON m.id = s.medication_id
@@ -85,17 +87,17 @@ func (h *EventHandler) DebugTrigger(w http.ResponseWriter, r *http.Request) {
 		ORDER BY s.time_of_day
 		LIMIT 1`).Scan(&medID, &schedID, &medName)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "no active schedules: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "no active schedules: " + err.Error()})
 		return
 	}
 
 	eventID, err := h.Hub.TriggerDevice(medID, schedID, medName)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "trigger: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "trigger: " + err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"eventId":        eventID,
 		"medicationName": medName,
 	})

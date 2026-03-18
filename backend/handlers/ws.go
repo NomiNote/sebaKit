@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
@@ -88,8 +89,8 @@ func (h *Hub) DeviceConnected() bool {
 // ─── Caregiver endpoint ─────────────────────────────────────────────────────
 
 // HandleCaregiverWS upgrades HTTP → WS for browser clients.
-func (h *Hub) HandleCaregiverWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := h.upgrader.Upgrade(w, r, nil)
+func (h *Hub) HandleCaregiverWS(c *gin.Context) {
+	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("ws/caregiver upgrade: %v", err)
 		return
@@ -123,8 +124,8 @@ func (h *Hub) HandleCaregiverWS(w http.ResponseWriter, r *http.Request) {
 // ─── Device endpoint ────────────────────────────────────────────────────────
 
 // HandleDeviceWS upgrades HTTP → WS for the IoT simulator.
-func (h *Hub) HandleDeviceWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := h.upgrader.Upgrade(w, r, nil)
+func (h *Hub) HandleDeviceWS(c *gin.Context) {
+	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("ws/device upgrade: %v", err)
 		return

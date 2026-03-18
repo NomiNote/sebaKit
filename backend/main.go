@@ -17,7 +17,7 @@ import (
 	"med-reminder/backend/handlers"
 	"med-reminder/backend/scheduler"
 
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -50,30 +50,31 @@ func main() {
 	eventH := &handlers.EventHandler{DB: database, Hub: hub}
 
 	// ── Router ──────────────────────────────────────────────────────────
-	r := mux.NewRouter()
+	r := gin.Default()
 
 	// CORS middleware.
-	r.Use(corsMiddleware)
+	r.Use(corsMiddleware())
 
 	// REST API
-	api := r.PathPrefix("/api").Subrouter()
+	api := r.Group("/api")
+	{
+		api.GET("/medications", medH.ListMedications)
+		api.POST("/medications", medH.CreateMedication)
+		api.PUT("/medications/:id", medH.UpdateMedication)
+		api.DELETE("/medications/:id", medH.DeleteMedication)
 
-	api.HandleFunc("/medications", medH.ListMedications).Methods("GET", "OPTIONS")
-	api.HandleFunc("/medications", medH.CreateMedication).Methods("POST", "OPTIONS")
-	api.HandleFunc("/medications/{id}", medH.UpdateMedication).Methods("PUT", "OPTIONS")
-	api.HandleFunc("/medications/{id}", medH.DeleteMedication).Methods("DELETE", "OPTIONS")
+		api.GET("/schedules", schedH.ListSchedules)
+		api.POST("/schedules", schedH.CreateSchedule)
+		api.DELETE("/schedules/:id", schedH.DeleteSchedule)
 
-	api.HandleFunc("/schedules", schedH.ListSchedules).Methods("GET", "OPTIONS")
-	api.HandleFunc("/schedules", schedH.CreateSchedule).Methods("POST", "OPTIONS")
-	api.HandleFunc("/schedules/{id}", schedH.DeleteSchedule).Methods("DELETE", "OPTIONS")
-
-	api.HandleFunc("/events", eventH.ListEvents).Methods("GET", "OPTIONS")
-	api.HandleFunc("/status", eventH.GetStatus).Methods("GET", "OPTIONS")
-	api.HandleFunc("/debug/trigger", eventH.DebugTrigger).Methods("POST", "OPTIONS")
+		api.GET("/events", eventH.ListEvents)
+		api.GET("/status", eventH.GetStatus)
+		api.POST("/debug/trigger", eventH.DebugTrigger)
+	}
 
 	// WebSocket endpoints
-	r.HandleFunc("/ws/caregiver", hub.HandleCaregiverWS)
-	r.HandleFunc("/ws/device", hub.HandleDeviceWS)
+	r.GET("/ws/caregiver", hub.HandleCaregiverWS)
+	r.GET("/ws/device", hub.HandleDeviceWS)
 
 	// ── Server ──────────────────────────────────────────────────────────
 	addr := ":8080"
@@ -107,16 +108,16 @@ func main() {
 }
 
 // corsMiddleware adds CORS headers for the Vite dev server.
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
-		next.ServeHTTP(w, r)
-	})
+		c.Next()
+	}
 }
