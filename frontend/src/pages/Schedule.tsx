@@ -107,6 +107,9 @@ export default function SchedulePage() {
             setSchedules([...schedules, s]);
             setShowModal(false);
           }}
+          onNewMedicationAdded={() => {
+            getMedications().then(setMedications).catch(console.error);
+          }}
         />
       )}
 
@@ -128,12 +131,18 @@ function AddModal({
   medications,
   onClose,
   onAdd,
+  onNewMedicationAdded,
 }: {
-  medications: { id: number; name: string }[];
+  medications: { id: number; name: string; dose: string }[];
   onClose: () => void;
   onAdd: (input: ScheduleInput) => Promise<void>;
+  onNewMedicationAdded: () => void;
 }) {
+  const [isNewMed, setIsNewMed] = useState(medications.length === 0);
   const [medId, setMedId] = useState(medications[0]?.id ?? 0);
+  const [newMedName, setNewMedName] = useState('');
+  const [newMedDose, setNewMedDose] = useState('');
+  
   const [time, setTime] = useState('08:00');
   const [days, setDays] = useState<string[]>(DAY_VALUES);
   const [loading, setLoading] = useState(false);
@@ -144,10 +153,28 @@ function AddModal({
     );
 
   const handleSubmit = async () => {
-    if (medId === 0 || days.length === 0) return;
+    if (days.length === 0) return;
+    if (isNewMed && (!newMedName.trim() || !newMedDose.trim())) return;
+    if (!isNewMed && medId === 0) return;
+    
     setLoading(true);
     try {
-      await onAdd({ medicationId: medId, timeOfDay: time, daysOfWeek: days.join(',') });
+      let finalMedId = medId;
+      
+      // Create new medication first if needed
+      if (isNewMed) {
+        // We import createMedication dynamically here to avoid needing to pass it down
+        const { createMedication } = await import('../api/client');
+        const med = await createMedication({
+          name: newMedName.trim(),
+          dose: newMedDose.trim(),
+          notes: '',
+        });
+        finalMedId = med.id;
+        onNewMedicationAdded();
+      }
+
+      await onAdd({ medicationId: finalMedId, timeOfDay: time, daysOfWeek: days.join(',') });
     } catch (e) {
       console.error(e);
     }
@@ -155,39 +182,85 @@ function AddModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-[360px] bg-white rounded-t-3xl p-6 pb-8 shadow-2xl animate-slide-up"
+        className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-display text-lg text-gray-900 mb-4">New Schedule</h2>
 
-        {/* Medication select */}
-        <label className="block text-xs font-medium text-gray-500 mb-1">Medication</label>
-        <select
-          id="schedule-med-select"
-          value={medId}
-          onChange={(e) => setMedId(Number(e.target.value))}
-          className="w-full border border-cream-200 rounded-xl px-3 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-sage-300"
-        >
-          {medications.map((m) => (
-            <option key={m.id} value={m.id}>{m.name}</option>
-          ))}
-        </select>
+        {/* Medication toggle */}
+        <div className="flex bg-cream-100 p-1 rounded-xl mb-4">
+          <button
+            onClick={() => setIsNewMed(false)}
+            disabled={medications.length === 0}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+              !isNewMed ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700 disabled:opacity-50'
+            }`}
+          >
+            Select Existing
+          </button>
+          <button
+            onClick={() => setIsNewMed(true)}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+              isNewMed ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Create New
+          </button>
+        </div>
+
+        {/* Medication input/select */}
+        {!isNewMed ? (
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Medication</label>
+            <select
+              value={medId}
+              onChange={(e) => setMedId(Number(e.target.value))}
+              className="w-full border border-cream-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sage-300 bg-white"
+            >
+              {medications.map((m) => (
+                <option key={m.id} value={m.id}>{m.name} ({m.dose})</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="flex gap-3 mb-4">
+            <div className="flex-[2]">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Aspirin"
+                value={newMedName}
+                onChange={(e) => setNewMedName(e.target.value)}
+                className="w-full border border-cream-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sage-300"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Dose</label>
+              <input
+                type="text"
+                placeholder="100mg"
+                value={newMedDose}
+                onChange={(e) => setNewMedDose(e.target.value)}
+                className="w-full border border-cream-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sage-300"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Time input */}
         <label className="block text-xs font-medium text-gray-500 mb-1">Time</label>
         <input
-          id="schedule-time-input"
           type="time"
           value={time}
           onChange={(e) => setTime(e.target.value)}
-          className="w-full border border-cream-200 rounded-xl px-3 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-sage-300"
+          className="w-full border border-cream-200 rounded-xl px-3 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-sage-300 bg-white"
         />
 
         {/* Days checkboxes */}
         <label className="block text-xs font-medium text-gray-500 mb-2">Days</label>
-        <div className="flex gap-1.5 mb-6">
+        <div className="flex gap-1.5 mb-6 justify-between">
           {DAY_VALUES.map((d, i) => (
             <button
               key={d}
@@ -211,9 +284,8 @@ function AddModal({
             Cancel
           </button>
           <button
-            id="schedule-save-btn"
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || (isNewMed && (!newMedName.trim() || !newMedDose.trim())) || (!isNewMed && medId === 0) || days.length === 0}
             className="flex-1 py-2.5 text-sm font-medium text-white bg-sage-500 rounded-xl hover:bg-sage-600 transition-colors disabled:opacity-50"
           >
             {loading ? 'Saving…' : 'Save'}

@@ -100,9 +100,16 @@ func (h *ScheduleHandler) DeleteSchedule(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Manually cascade delete events associated with this schedule
+	// to avoid foreign key constraint errors.
+	if _, err := h.DB.ExecContext(r.Context(), `DELETE FROM events WHERE schedule_id=?`, id); err != nil {
+		httpError(w, http.StatusInternalServerError, "delete associated events: %v", err)
+		return
+	}
+
 	result, err := h.DB.ExecContext(r.Context(), `DELETE FROM schedules WHERE id=?`, id)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "delete: %v", err)
+		httpError(w, http.StatusInternalServerError, "delete schedule: %v", err)
 		return
 	}
 	n, _ := result.RowsAffected()
