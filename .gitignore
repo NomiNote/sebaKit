@@ -1,0 +1,33 @@
+# ── Dependencies ─────────────────────────────
+node_modules/
+
+# ── Build output ─────────────────────────────
+frontend/dist/
+backend/backend.exe
+backend/backend
+simulator/simulator.exe
+simulator/simulator
+
+# ── SQLite database ──────────────────────────
+backend/data/
+
+# ── OS files ─────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Editor / IDE ─────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Environment ──────────────────────────────
+.env
+.env.local
+
+# ── Misc ─────────────────────────────────────
+*.log
+task.md
+walkthrough.md
