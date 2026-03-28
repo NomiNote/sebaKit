@@ -41,11 +41,13 @@ export default function HistoryPage() {
               const scheduledTime = new Date(ev.scheduledAt).toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
+                hour12: true,
               });
               const completedTime = ev.completedAt
                 ? new Date(ev.completedAt).toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',
+                    hour12: true,
                   })
                 : null;
 
