@@ -41,6 +41,6 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 -- Default settings (inserted only if not present).
-INSERT OR IGNORE INTO settings (key, value) VALUES ('patient_name', 'Margaret');
-INSERT OR IGNORE INTO settings (key, value) VALUES ('patient_type', 'Mom');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('patient_name', 'Name');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('patient_type', '');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('alert_duration', '5');

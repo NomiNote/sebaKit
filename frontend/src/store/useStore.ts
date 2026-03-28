@@ -39,7 +39,7 @@ export const useStore = create<AppState>((set) => ({
   todayDoses: [],
   deviceConnected: false,
   activeAlert: null,
-  settings: { patient_name: 'Margaret', patient_type: 'Mom', alert_duration: '5' },
+  settings: { patient_name: 'Name', patient_type: '', alert_duration: '5' },
 
   setMedications: (medications) => set({ medications }),
   setSchedules: (schedules) => set({ schedules }),
