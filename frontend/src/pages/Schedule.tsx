@@ -72,7 +72,7 @@ export default function SchedulePage() {
             {items.map((s) => (
               <div key={s.id} className="px-4 py-3 flex items-center justify-between">
                 <div>
-                  <span className="font-medium text-sage-600 text-sm">{s.timeOfDay}</span>
+                  <span className="font-medium text-sage-600 text-sm">{to12h(s.timeOfDay)}</span>
                   <span className="text-gray-400 text-xs ml-2">
                     {formatDays(s.daysOfWeek)}
                   </span>
@@ -340,6 +340,16 @@ function formatDays(dow: string): string {
     .split(',')
     .map((d) => DAY_NAMES[parseInt(d) - 1] || d)
     .join(', ');
+}
+
+/** Convert "HH:MM" (24h) → "h:mm AM/PM" */
+function to12h(tod: string): string {
+  const [hStr, mStr] = tod.split(':');
+  let h = parseInt(hStr, 10);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${mStr} ${suffix}`;
 }
 
 function TrashIcon({ className }: { className?: string }) {

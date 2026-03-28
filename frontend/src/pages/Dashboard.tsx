@@ -7,6 +7,16 @@ import PatientCard from '../components/PatientCard';
 import MedRow from '../components/MedRow';
 import StreakWidget from '../components/StreakWidget';
 
+/** Convert "HH:MM" (24h) → "h:mm AM/PM" */
+function to12h(tod: string): string {
+  const [hStr, mStr] = tod.split(':');
+  let h = parseInt(hStr, 10);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${mStr} ${suffix}`;
+}
+
 export default function Dashboard() {
   const medications = useStore((s) => s.medications);
   const todayEvents = useStore((s) => s.todayEvents);
@@ -61,7 +71,8 @@ export default function Dashboard() {
       // All upcoming, none taken yet
       heroColor = 'from-sky-400 to-sky-500';
       heroLabel = `${upcomingDoses} Upcoming`;
-      heroSub = `${todayDoses[0]?.timeOfDay ? `Next at ${todayDoses[0].timeOfDay}` : 'Doses scheduled for later'}`;
+      const firstUpcoming = todayDoses.find((d) => d.status === 'upcoming');
+      heroSub = firstUpcoming ? `Next at ${to12h(firstUpcoming.timeOfDay)}` : 'Doses scheduled for later';
     }
   }
 
