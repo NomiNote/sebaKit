@@ -22,11 +22,10 @@ type DeviceHello struct {
 	DeviceID string `json:"deviceId"`
 }
 
-// TriggerMsg is sent from backend → device.
+// TriggerMsg is sent from backend → device (simplified: just alert duration).
 type TriggerMsg struct {
-	Type           string `json:"type"`
-	EventID        int64  `json:"eventId"`
-	MedicationName string `json:"medicationName"`
+	Type     string `json:"type"`
+	Duration int    `json:"duration"` // alert duration in minutes
 }
 
 // AckMsg is sent from device → backend.
@@ -238,7 +237,7 @@ func (h *Hub) TriggerDevice(medicationID, scheduleID int64, medName string) (int
 	h.mu.RUnlock()
 
 	if dev != nil {
-		msg := TriggerMsg{Type: "trigger", EventID: eventID, MedicationName: medName}
+		msg := TriggerMsg{Type: "trigger", Duration: 5}
 		h.mu.Lock()
 		err = dev.WriteJSON(msg)
 		h.mu.Unlock()
