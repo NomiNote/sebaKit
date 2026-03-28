@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS schedules (
     medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
     time_of_day   TEXT NOT NULL,   -- "HH:MM" 24-hour format
     days_of_week  TEXT NOT NULL,   -- comma-separated: "1,2,3,4,5,6,7"
+    start_date    TEXT NOT NULL DEFAULT '2000-01-01', -- "YYYY-MM-DD"
+    end_date      TEXT,            -- "YYYY-MM-DD" or NULL for indefinite
     active        BOOLEAN DEFAULT 1
 );
 

@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"med-reminder/backend/handlers"
 
@@ -54,7 +55,8 @@ func (s *Scheduler) Reload() error {
 	s.cron = cron.New()
 
 	rows, err := s.db.Query(`
-		SELECT s.id, s.medication_id, m.name, s.time_of_day, s.days_of_week
+		SELECT s.id, s.medication_id, m.name, s.time_of_day, s.days_of_week,
+		       s.start_date, COALESCE(s.end_date, '') as end_date
 		FROM schedules s
 		JOIN medications m ON m.id = s.medication_id
 		WHERE s.active = 1`)
@@ -66,17 +68,25 @@ func (s *Scheduler) Reload() error {
 	count := 0
 	for rows.Next() {
 		var schedID, medID int64
-		var medName, tod, dow string
-		if err := rows.Scan(&schedID, &medID, &medName, &tod, &dow); err != nil {
+		var medName, tod, dow, startDate, endDate string
+		if err := rows.Scan(&schedID, &medID, &medName, &tod, &dow, &startDate, &endDate); err != nil {
 			log.Printf("scheduler scan: %v", err)
 			continue
 		}
 
 		expr := toCronExpr(tod, dow)
 		// Capture loop variables for closure.
-		sid, mid, mn := schedID, medID, medName
+		sid, mid, mn, sd, ed := schedID, medID, medName, startDate, endDate
 
 		_, err := s.cron.AddFunc(expr, func() {
+			// Check date range before firing.
+			today := time.Now().Format("2006-01-02")
+			if today < sd {
+				return // hasn't started yet
+			}
+			if ed != "" && today > ed {
+				return // already ended
+			}
 			log.Printf("Cron firing: %s (%s)", mn, tod)
 			if _, err := s.hub.TriggerDevice(mid, sid, mn); err != nil {
 				log.Printf("cron trigger error: %v", err)

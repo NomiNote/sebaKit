@@ -50,6 +50,21 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
+
+	// Migration: add start_date/end_date to schedules if missing.
+	for _, col := range []struct{ name, ddl string }{
+		{"start_date", `ALTER TABLE schedules ADD COLUMN start_date TEXT NOT NULL DEFAULT '2000-01-01'`},
+		{"end_date", `ALTER TABLE schedules ADD COLUMN end_date TEXT`},
+	} {
+		var dummy string
+		err := db.QueryRow(`SELECT ` + col.name + ` FROM schedules LIMIT 1`).Scan(&dummy)
+		if err != nil {
+			if _, err2 := db.Exec(col.ddl); err2 != nil {
+				log.Printf("migration %s: %v (may already exist)", col.name, err2)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -106,10 +121,12 @@ func seedIfEmpty(db *sql.DB) error {
 		{1, "08:00", "1,2,3,4,5,6,7"},
 		{2, "20:00", "1,2,3,4,5,6,7"},
 	}
+	now := time.Now()
+	startDate := now.AddDate(0, 0, -7).Format("2006-01-02") // started 7 days ago for demo
 	schedIDs := make([]int64, len(schedules))
 	for i, s := range schedules {
-		res, err := tx.Exec(`INSERT INTO schedules (medication_id, time_of_day, days_of_week, active) VALUES (?, ?, ?, 1)`,
-			medIDs[s.medIdx], s.tod, s.days)
+		res, err := tx.Exec(`INSERT INTO schedules (medication_id, time_of_day, days_of_week, start_date, active) VALUES (?, ?, ?, ?, 1)`,
+			medIDs[s.medIdx], s.tod, s.days, startDate)
 		if err != nil {
 			return err
 		}
@@ -119,7 +136,6 @@ func seedIfEmpty(db *sql.DB) error {
 	// --- Past events (last 7 days) ---
 	// Generate 6 realistic events: mix of completed & missed.
 	rng := rand.New(rand.NewSource(42)) // deterministic for demo reproducibility
-	now := time.Now()
 	type pastEvent struct {
 		medIdx, schedIdx int
 		daysAgo          int

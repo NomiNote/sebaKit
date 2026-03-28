@@ -76,6 +76,9 @@ export default function SchedulePage() {
                   <span className="text-gray-400 text-xs ml-2">
                     {formatDays(s.daysOfWeek)}
                   </span>
+                  <span className="text-gray-300 text-xs ml-2">
+                    {formatDateRange(s.startDate, s.endDate)}
+                  </span>
                 </div>
                 <button
                   onClick={() => setDeleteId(s.id)}
@@ -103,8 +106,8 @@ export default function SchedulePage() {
           medications={medications}
           onClose={() => setShowModal(false)}
           onAdd={async (input) => {
-            const s = await createSchedule(input);
-            setSchedules([...schedules, s]);
+            const created = await createSchedule(input);
+            setSchedules([...schedules, ...created]);
             setShowModal(false);
           }}
           onNewMedicationAdded={() => {
@@ -143,9 +146,22 @@ function AddModal({
   const [newMedName, setNewMedName] = useState('');
   const [newMedDose, setNewMedDose] = useState('');
   
-  const [time, setTime] = useState('08:00');
+  const [times, setTimes] = useState<string[]>(['08:00']);
+  const [newTime, setNewTime] = useState('08:00');
   const [days, setDays] = useState<string[]>(DAY_VALUES);
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const addTime = () => {
+    if (newTime && !times.includes(newTime)) {
+      setTimes([...times, newTime].sort());
+    }
+  };
+
+  const removeTime = (t: string) => {
+    setTimes(times.filter((x) => x !== t));
+  };
 
   const toggleDay = (d: string) =>
     setDays((prev) =>
@@ -153,7 +169,7 @@ function AddModal({
     );
 
   const handleSubmit = async () => {
-    if (days.length === 0) return;
+    if (days.length === 0 || times.length === 0) return;
     if (isNewMed && (!newMedName.trim() || !newMedDose.trim())) return;
     if (!isNewMed && medId === 0) return;
     
@@ -163,7 +179,6 @@ function AddModal({
       
       // Create new medication first if needed
       if (isNewMed) {
-        // We import createMedication dynamically here to avoid needing to pass it down
         const { createMedication } = await import('../api/client');
         const med = await createMedication({
           name: newMedName.trim(),
@@ -174,7 +189,13 @@ function AddModal({
         onNewMedicationAdded();
       }
 
-      await onAdd({ medicationId: finalMedId, timeOfDay: time, daysOfWeek: days.join(',') });
+      await onAdd({
+        medicationId: finalMedId,
+        times,
+        daysOfWeek: days.join(','),
+        startDate,
+        endDate: endDate || null,
+      });
     } catch (e) {
       console.error(e);
     }
@@ -184,7 +205,7 @@ function AddModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl animate-fade-in"
+        className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-display text-lg text-gray-900 mb-4">New Schedule</h2>
@@ -249,18 +270,42 @@ function AddModal({
           </div>
         )}
 
-        {/* Time input */}
-        <label className="block text-xs font-medium text-gray-500 mb-1">Time</label>
-        <input
-          type="time"
-          value={time}
-          onChange={(e) => setTime(e.target.value)}
-          className="w-full border border-cream-200 rounded-xl px-3 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-sage-300 bg-white"
-        />
+        {/* Times — multi-time chip input */}
+        <label className="block text-xs font-medium text-gray-500 mb-1">Times</label>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {times.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center gap-1 bg-sage-50 text-sage-700 text-xs font-semibold pl-2.5 pr-1 py-1 rounded-full"
+            >
+              {to12h(t)}
+              <button
+                onClick={() => removeTime(t)}
+                className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-sage-200 text-sage-500 transition-colors"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2 mb-4">
+          <input
+            type="time"
+            value={newTime}
+            onChange={(e) => setNewTime(e.target.value)}
+            className="flex-1 border border-cream-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sage-300 bg-white"
+          />
+          <button
+            onClick={addTime}
+            className="px-3 py-2 text-sm font-medium text-sage-600 bg-sage-50 rounded-xl hover:bg-sage-100 transition-colors"
+          >
+            + Add
+          </button>
+        </div>
 
         {/* Days checkboxes */}
         <label className="block text-xs font-medium text-gray-500 mb-2">Days</label>
-        <div className="flex gap-1.5 mb-6 justify-between">
+        <div className="flex gap-1.5 mb-4 justify-between">
           {DAY_VALUES.map((d, i) => (
             <button
               key={d}
@@ -276,6 +321,30 @@ function AddModal({
           ))}
         </div>
 
+        {/* Date range */}
+        <div className="flex gap-3 mb-6">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full border border-cream-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sage-300 bg-white"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-500 mb-1">End Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              min={startDate}
+              placeholder="Optional"
+              className="w-full border border-cream-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sage-300 bg-white"
+            />
+          </div>
+        </div>
+
         <div className="flex gap-3">
           <button
             onClick={onClose}
@@ -285,7 +354,7 @@ function AddModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading || (isNewMed && (!newMedName.trim() || !newMedDose.trim())) || (!isNewMed && medId === 0) || days.length === 0}
+            disabled={loading || (isNewMed && (!newMedName.trim() || !newMedDose.trim())) || (!isNewMed && medId === 0) || days.length === 0 || times.length === 0}
             className="flex-1 py-2.5 text-sm font-medium text-white bg-sage-500 rounded-xl hover:bg-sage-600 transition-colors disabled:opacity-50"
           >
             {loading ? 'Saving…' : 'Save'}
@@ -340,6 +409,15 @@ function formatDays(dow: string): string {
     .split(',')
     .map((d) => DAY_NAMES[parseInt(d) - 1] || d)
     .join(', ');
+}
+
+function formatDateRange(start: string, end: string | null): string {
+  const fmtDate = (d: string) => {
+    const [y, m, day] = d.split('-');
+    return `${parseInt(m)}/${parseInt(day)}/${y.slice(2)}`;
+  };
+  if (!end) return `from ${fmtDate(start)}`;
+  return `${fmtDate(start)} – ${fmtDate(end)}`;
 }
 
 /** Convert "HH:MM" (24h) → "h:mm AM/PM" */

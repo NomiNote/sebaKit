@@ -24,13 +24,17 @@ export interface Schedule {
   medicationName: string;
   timeOfDay: string;
   daysOfWeek: string;
+  startDate: string;
+  endDate: string | null;
   active: boolean;
 }
 
 export interface ScheduleInput {
   medicationId: number;
-  timeOfDay: string;
+  times: string[];
   daysOfWeek: string;
+  startDate: string;
+  endDate: string | null;
 }
 
 export interface MedEvent {
@@ -88,12 +92,12 @@ export const deleteMedication = (id: number): Promise<void> =>
 export const getSchedules = (): Promise<Schedule[]> =>
   fetch(`${BASE}/schedules`).then((r) => json<Schedule[]>(r));
 
-export const createSchedule = (data: ScheduleInput): Promise<Schedule> =>
+export const createSchedule = (data: ScheduleInput): Promise<Schedule[]> =>
   fetch(`${BASE}/schedules`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  }).then((r) => json<Schedule>(r));
+  }).then((r) => json<Schedule[]>(r));
 
 export const deleteSchedule = (id: number): Promise<void> =>
   fetch(`${BASE}/schedules/${id}`, { method: 'DELETE' }).then((r) => {

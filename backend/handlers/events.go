@@ -130,7 +130,7 @@ func (h *EventHandler) TodayStatus(c *gin.Context) {
 
 	// Query all active schedules that include today's day-of-week.
 	rows, err := h.DB.QueryContext(c.Request.Context(), `
-		SELECT s.id, m.name, m.dose, s.time_of_day, s.days_of_week
+		SELECT s.id, m.name, m.dose, s.time_of_day, s.days_of_week, s.start_date, s.end_date
 		FROM schedules s
 		JOIN medications m ON m.id = s.medication_id
 		WHERE s.active = 1
@@ -141,6 +141,8 @@ func (h *EventHandler) TodayStatus(c *gin.Context) {
 	}
 	defer rows.Close()
 
+	todayDateStr := now.Format("2006-01-02")
+
 	type schedRow struct {
 		id      int64
 		medName string
@@ -150,16 +152,27 @@ func (h *EventHandler) TodayStatus(c *gin.Context) {
 	}
 	var todayScheds []schedRow
 	for rows.Next() {
-		var sr schedRow
-		if err := rows.Scan(&sr.id, &sr.medName, &sr.dose, &sr.tod, &sr.dow); err != nil {
+		var id int64
+		var medName, dose, tod, dow, startDate string
+		var endDate sql.NullString
+		if err := rows.Scan(&id, &medName, &dose, &tod, &dow, &startDate, &endDate); err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "scan: " + err.Error()})
 			return
 		}
+
+		// Filter by date range.
+		if todayDateStr < startDate {
+			continue // hasn't started yet
+		}
+		if endDate.Valid && endDate.String != "" && todayDateStr > endDate.String {
+			continue // already ended
+		}
+
 		// Check if today's day-of-week is in the schedule's days_of_week list.
-		days := strings.Split(sr.dow, ",")
+		days := strings.Split(dow, ",")
 		for _, d := range days {
 			if strings.TrimSpace(d) == dowStr {
-				todayScheds = append(todayScheds, sr)
+				todayScheds = append(todayScheds, schedRow{id, medName, dose, tod, dow})
 				break
 			}
 		}
