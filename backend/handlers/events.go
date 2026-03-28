@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -101,4 +103,125 @@ func (h *EventHandler) DebugTrigger(c *gin.Context) {
 		"eventId":        eventID,
 		"medicationName": medName,
 	})
+}
+
+// ─── Today Status ───────────────────────────────────────────────────────────
+
+// TodayDose represents one expected dose for today, with its current status.
+type TodayDose struct {
+	ScheduleID     int64  `json:"scheduleId"`
+	MedicationName string `json:"medicationName"`
+	Dose           string `json:"dose"`
+	TimeOfDay      string `json:"timeOfDay"`
+	Status         string `json:"status"` // "upcoming", "pending", "completed", "missed"
+}
+
+// TodayStatus — GET /api/today-status
+// Computes today's expected doses from active schedules, cross-referenced with events.
+func (h *EventHandler) TodayStatus(c *gin.Context) {
+	now := time.Now()
+
+	// ISO day-of-week: Monday=1 … Sunday=7.
+	isoDow := int(now.Weekday())
+	if isoDow == 0 {
+		isoDow = 7 // Sunday
+	}
+	dowStr := strconv.Itoa(isoDow)
+
+	// Query all active schedules that include today's day-of-week.
+	rows, err := h.DB.QueryContext(c.Request.Context(), `
+		SELECT s.id, m.name, m.dose, s.time_of_day, s.days_of_week
+		FROM schedules s
+		JOIN medications m ON m.id = s.medication_id
+		WHERE s.active = 1
+		ORDER BY s.time_of_day, m.name`)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "query schedules: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type schedRow struct {
+		id      int64
+		medName string
+		dose    string
+		tod     string
+		dow     string
+	}
+	var todayScheds []schedRow
+	for rows.Next() {
+		var sr schedRow
+		if err := rows.Scan(&sr.id, &sr.medName, &sr.dose, &sr.tod, &sr.dow); err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "scan: " + err.Error()})
+			return
+		}
+		// Check if today's day-of-week is in the schedule's days_of_week list.
+		days := strings.Split(sr.dow, ",")
+		for _, d := range days {
+			if strings.TrimSpace(d) == dowStr {
+				todayScheds = append(todayScheds, sr)
+				break
+			}
+		}
+	}
+
+	// Today's date boundaries (start of day and now) for event lookup.
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	todayStartStr := todayStart.Format(time.RFC3339)
+
+	// Query events created today.
+	eventRows, err := h.DB.QueryContext(c.Request.Context(), `
+		SELECT schedule_id, status
+		FROM events
+		WHERE scheduled_at >= ?
+		ORDER BY scheduled_at DESC`, todayStartStr)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "query events: " + err.Error()})
+		return
+	}
+	defer eventRows.Close()
+
+	// Map schedule_id → latest event status.
+	eventMap := make(map[int64]string)
+	for eventRows.Next() {
+		var sid sql.NullInt64
+		var status string
+		if err := eventRows.Scan(&sid, &status); err != nil {
+			continue
+		}
+		if sid.Valid {
+			if _, exists := eventMap[sid.Int64]; !exists {
+				eventMap[sid.Int64] = status // keep latest (query is DESC)
+			}
+		}
+	}
+
+	// Build the response.
+	doses := make([]TodayDose, 0, len(todayScheds))
+	for _, sr := range todayScheds {
+		status := "upcoming"
+		if evStatus, ok := eventMap[sr.id]; ok {
+			status = evStatus // "pending", "completed", or "missed"
+		} else {
+			// No event yet — check if the scheduled time has passed.
+			parts := strings.SplitN(sr.tod, ":", 2)
+			if len(parts) == 2 {
+				h, _ := strconv.Atoi(parts[0])
+				m, _ := strconv.Atoi(parts[1])
+				schedTime := time.Date(now.Year(), now.Month(), now.Day(), h, m, 0, 0, now.Location())
+				if now.After(schedTime) {
+					status = "due" // past due but cron didn't fire (e.g. backend was off)
+				}
+			}
+		}
+		doses = append(doses, TodayDose{
+			ScheduleID:     sr.id,
+			MedicationName: sr.medName,
+			Dose:           sr.dose,
+			TimeOfDay:      sr.tod,
+			Status:         status,
+		})
+	}
+
+	c.JSON(http.StatusOK, doses)
 }

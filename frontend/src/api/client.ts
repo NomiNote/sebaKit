@@ -116,3 +116,16 @@ export const debugTrigger = (): Promise<{ eventId: number; medicationName: strin
   fetch(`${BASE}/debug/trigger`, { method: 'POST' }).then((r) =>
     json<{ eventId: number; medicationName: string }>(r),
   );
+
+// ─── Today Status ───────────────────────────────────────────────────────────
+
+export interface TodayDose {
+  scheduleId: number;
+  medicationName: string;
+  dose: string;
+  timeOfDay: string;
+  status: 'upcoming' | 'pending' | 'completed' | 'missed' | 'due';
+}
+
+export const getTodayStatus = (): Promise<TodayDose[]> =>
+  fetch(`${BASE}/today-status`).then((r) => json<TodayDose[]>(r));

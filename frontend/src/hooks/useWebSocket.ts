@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store/useStore';
+import { getTodayStatus } from '../api/client';
 
 interface WsMessage {
   type: string;
@@ -20,7 +21,12 @@ export function useWebSocket() {
     resolveAlert,
     patchEvent,
     setDeviceConnected,
+    setTodayDoses,
   } = useStore();
+
+  const refreshTodayDoses = useCallback(() => {
+    getTodayStatus().then(setTodayDoses).catch(console.error);
+  }, [setTodayDoses]);
 
   const connect = useCallback(() => {
     // Use relative WS path — Vite proxy handles it in dev.
@@ -44,14 +50,17 @@ export function useWebSocket() {
               medicationName: msg.medicationName ?? '',
               scheduledAt: msg.scheduledAt ?? new Date().toISOString(),
             });
+            refreshTodayDoses();
             break;
           case 'completed':
             resolveAlert(msg.eventId!);
             patchEvent(msg.eventId!, 'completed');
+            refreshTodayDoses();
             break;
           case 'missed':
             resolveAlert(msg.eventId!);
             patchEvent(msg.eventId!, 'missed');
+            refreshTodayDoses();
             break;
           case 'status':
             setDeviceConnected(msg.deviceConnected ?? false);
@@ -72,7 +81,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       ws.close();
     };
-  }, [setActiveAlert, resolveAlert, patchEvent, setDeviceConnected]);
+  }, [setActiveAlert, resolveAlert, patchEvent, setDeviceConnected, refreshTodayDoses]);
 
   useEffect(() => {
     connect();
@@ -81,3 +90,4 @@ export function useWebSocket() {
     };
   }, [connect]);
 }
+

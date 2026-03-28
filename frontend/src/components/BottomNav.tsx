@@ -1,17 +1,15 @@
 // BottomNav — mobile bottom tab bar.
 
 import { NavLink } from 'react-router-dom';
-import { useStore } from '../store/useStore';
 
 const tabs = [
   { to: '/', label: 'Home', icon: HomeIcon },
   { to: '/schedule', label: 'Schedule', icon: CalendarIcon },
   { to: '/history', label: 'History', icon: ClockIcon },
+  { to: '/settings', label: 'Settings', icon: GearIcon },
 ] as const;
 
 export default function BottomNav() {
-  const activeAlert = useStore((s) => s.activeAlert);
-
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[360px] bg-white border-t border-cream-200 shadow-lg z-50">
       <div className="flex justify-around items-center h-14">
@@ -29,22 +27,6 @@ export default function BottomNav() {
             {label}
           </NavLink>
         ))}
-
-        {/* Alert tab — only shows dot when active */}
-        <NavLink
-          to="/alert"
-          className={({ isActive }) =>
-            `relative flex flex-col items-center gap-0.5 text-[11px] font-medium transition-colors ${
-              isActive ? 'text-amber-500' : activeAlert ? 'text-amber-400' : 'text-gray-400 hover:text-gray-600'
-            }`
-          }
-        >
-          {activeAlert && (
-            <span className="absolute -top-0.5 right-0 w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-          )}
-          <BellIcon className="w-5 h-5" />
-          Alert
-        </NavLink>
       </div>
     </nav>
   );
@@ -81,11 +63,11 @@ function ClockIcon({ className }: { className?: string }) {
   );
 }
 
-function BellIcon({ className }: { className?: string }) {
+function GearIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }

@@ -1,7 +1,7 @@
 // Zustand store — central state for the caregiver dashboard.
 
 import { create } from 'zustand';
-import type { Medication, Schedule, MedEvent } from '../api/client';
+import type { Medication, Schedule, MedEvent, TodayDose } from '../api/client';
 
 export interface ActiveAlert {
   eventId: number;
@@ -14,6 +14,7 @@ interface AppState {
   schedules: Schedule[];
   todayEvents: MedEvent[];
   weekEvents: MedEvent[];
+  todayDoses: TodayDose[];
   deviceConnected: boolean;
   activeAlert: ActiveAlert | null;
 
@@ -21,6 +22,7 @@ interface AppState {
   setSchedules: (s: Schedule[]) => void;
   setTodayEvents: (e: MedEvent[]) => void;
   setWeekEvents: (e: MedEvent[]) => void;
+  setTodayDoses: (d: TodayDose[]) => void;
   setDeviceConnected: (c: boolean) => void;
   setActiveAlert: (a: ActiveAlert) => void;
   resolveAlert: (eventId: number) => void;
@@ -32,6 +34,7 @@ export const useStore = create<AppState>((set) => ({
   schedules: [],
   todayEvents: [],
   weekEvents: [],
+  todayDoses: [],
   deviceConnected: false,
   activeAlert: null,
 
@@ -39,6 +42,7 @@ export const useStore = create<AppState>((set) => ({
   setSchedules: (schedules) => set({ schedules }),
   setTodayEvents: (todayEvents) => set({ todayEvents }),
   setWeekEvents: (weekEvents) => set({ weekEvents }),
+  setTodayDoses: (todayDoses) => set({ todayDoses }),
   setDeviceConnected: (deviceConnected) => set({ deviceConnected }),
 
   setActiveAlert: (activeAlert) => set({ activeAlert }),

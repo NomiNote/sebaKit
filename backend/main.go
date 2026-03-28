@@ -69,6 +69,7 @@ func main() {
 
 		api.GET("/events", eventH.ListEvents)
 		api.GET("/status", eventH.GetStatus)
+		api.GET("/today-status", eventH.TodayStatus)
 		api.POST("/debug/trigger", eventH.DebugTrigger)
 	}
 
