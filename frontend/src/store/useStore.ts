@@ -1,7 +1,7 @@
 // Zustand store — central state for the caregiver dashboard.
 
 import { create } from 'zustand';
-import type { Medication, Schedule, MedEvent, TodayDose } from '../api/client';
+import type { Medication, Schedule, MedEvent, TodayDose, AppSettings } from '../api/client';
 
 export interface ActiveAlert {
   eventId: number;
@@ -17,6 +17,7 @@ interface AppState {
   todayDoses: TodayDose[];
   deviceConnected: boolean;
   activeAlert: ActiveAlert | null;
+  settings: AppSettings;
 
   setMedications: (m: Medication[]) => void;
   setSchedules: (s: Schedule[]) => void;
@@ -27,6 +28,7 @@ interface AppState {
   setActiveAlert: (a: ActiveAlert) => void;
   resolveAlert: (eventId: number) => void;
   patchEvent: (eventId: number, status: 'completed' | 'missed') => void;
+  setSettings: (s: AppSettings) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -37,6 +39,7 @@ export const useStore = create<AppState>((set) => ({
   todayDoses: [],
   deviceConnected: false,
   activeAlert: null,
+  settings: { patient_name: 'Margaret', patient_type: 'Mom', alert_duration: '5' },
 
   setMedications: (medications) => set({ medications }),
   setSchedules: (schedules) => set({ schedules }),
@@ -44,6 +47,7 @@ export const useStore = create<AppState>((set) => ({
   setWeekEvents: (weekEvents) => set({ weekEvents }),
   setTodayDoses: (todayDoses) => set({ todayDoses }),
   setDeviceConnected: (deviceConnected) => set({ deviceConnected }),
+  setSettings: (settings) => set({ settings }),
 
   setActiveAlert: (activeAlert) => set({ activeAlert }),
 

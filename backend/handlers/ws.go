@@ -63,6 +63,9 @@ type Hub struct {
 	pendingTimers map[int64]func()
 	timerMu       sync.Mutex
 
+	// GetAlertDuration returns the alert duration in minutes from settings.
+	GetAlertDuration func() int
+
 	upgrader websocket.Upgrader
 }
 
@@ -237,7 +240,11 @@ func (h *Hub) TriggerDevice(medicationID, scheduleID int64, medName string) (int
 	h.mu.RUnlock()
 
 	if dev != nil {
-		msg := TriggerMsg{Type: "trigger", Duration: 5}
+		duration := 5
+		if h.GetAlertDuration != nil {
+			duration = h.GetAlertDuration()
+		}
+		msg := TriggerMsg{Type: "trigger", Duration: duration}
 		h.mu.Lock()
 		err = dev.WriteJSON(msg)
 		h.mu.Unlock()

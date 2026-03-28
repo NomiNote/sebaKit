@@ -133,3 +133,22 @@ export interface TodayDose {
 
 export const getTodayStatus = (): Promise<TodayDose[]> =>
   fetch(`${BASE}/today-status`).then((r) => json<TodayDose[]>(r));
+
+// ─── Settings ───────────────────────────────────────────────────────────────
+
+export interface AppSettings {
+  patient_name: string;
+  patient_type: string;
+  alert_duration: string;
+  [key: string]: string;
+}
+
+export const getSettings = (): Promise<AppSettings> =>
+  fetch(`${BASE}/settings`).then((r) => json<AppSettings>(r));
+
+export const updateSettings = (data: Partial<AppSettings>): Promise<AppSettings> =>
+  fetch(`${BASE}/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then((r) => json<AppSettings>(r));
