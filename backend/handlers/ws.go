@@ -22,11 +22,10 @@ type DeviceHello struct {
 	DeviceID string `json:"deviceId"`
 }
 
-// TriggerMsg is sent from backend → device.
+// TriggerMsg is sent from backend → device (simplified: just alert duration).
 type TriggerMsg struct {
-	Type           string `json:"type"`
-	EventID        int64  `json:"eventId"`
-	MedicationName string `json:"medicationName"`
+	Type     string `json:"type"`
+	Duration int    `json:"duration"` // alert duration in minutes
 }
 
 // AckMsg is sent from device → backend.
@@ -63,6 +62,9 @@ type Hub struct {
 	// pendingTimers tracks cancel funcs for missed-timeout goroutines keyed by eventID.
 	pendingTimers map[int64]func()
 	timerMu       sync.Mutex
+
+	// GetAlertDuration returns the alert duration in minutes from settings.
+	GetAlertDuration func() int
 
 	upgrader websocket.Upgrader
 }
@@ -238,7 +240,11 @@ func (h *Hub) TriggerDevice(medicationID, scheduleID int64, medName string) (int
 	h.mu.RUnlock()
 
 	if dev != nil {
-		msg := TriggerMsg{Type: "trigger", EventID: eventID, MedicationName: medName}
+		duration := 5
+		if h.GetAlertDuration != nil {
+			duration = h.GetAlertDuration()
+		}
+		msg := TriggerMsg{Type: "trigger", Duration: duration}
 		h.mu.Lock()
 		err = dev.WriteJSON(msg)
 		h.mu.Unlock()

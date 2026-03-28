@@ -48,6 +48,10 @@ func main() {
 		}
 	}}
 	eventH := &handlers.EventHandler{DB: database, Hub: hub}
+	settingsH := &handlers.SettingsHandler{DB: database}
+
+	// Let Hub read alert_duration from settings.
+	hub.GetAlertDuration = settingsH.GetAlertDuration
 
 	// ── Router ──────────────────────────────────────────────────────────
 	r := gin.Default()
@@ -71,6 +75,9 @@ func main() {
 		api.GET("/status", eventH.GetStatus)
 		api.GET("/today-status", eventH.TodayStatus)
 		api.POST("/debug/trigger", eventH.DebugTrigger)
+
+		api.GET("/settings", settingsH.GetSettings)
+		api.PUT("/settings", settingsH.UpdateSettings)
 	}
 
 	// WebSocket endpoints
