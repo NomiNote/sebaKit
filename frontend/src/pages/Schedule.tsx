@@ -170,7 +170,7 @@ function AddModal({
 
   const handleSubmit = async () => {
     if (days.length === 0 || times.length === 0) return;
-    if (isNewMed && (!newMedName.trim() || !newMedDose.trim())) return;
+    if (isNewMed && !newMedName.trim()) return;
     if (!isNewMed && medId === 0) return;
     
     setLoading(true);
@@ -241,7 +241,7 @@ function AddModal({
               className="w-full border border-cream-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sage-300 bg-white"
             >
               {medications.map((m) => (
-                <option key={m.id} value={m.id}>{m.name} ({m.dose})</option>
+                <option key={m.id} value={m.id}>{m.name}{m.dose ? ` (${m.dose})` : ''}</option>
               ))}
             </select>
           </div>
@@ -354,7 +354,7 @@ function AddModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading || (isNewMed && (!newMedName.trim() || !newMedDose.trim())) || (!isNewMed && medId === 0) || days.length === 0 || times.length === 0}
+            disabled={loading || (isNewMed && !newMedName.trim()) || (!isNewMed && medId === 0) || days.length === 0 || times.length === 0}
             className="flex-1 py-2.5 text-sm font-medium text-white bg-sage-500 rounded-xl hover:bg-sage-600 transition-colors disabled:opacity-50"
           >
             {loading ? 'Saving…' : 'Save'}
