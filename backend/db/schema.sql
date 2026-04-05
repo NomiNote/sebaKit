@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS medications (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,
-    dose       TEXT NOT NULL,
+    dose       TEXT NOT NULL DEFAULT '',
     notes      TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

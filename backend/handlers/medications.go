@@ -32,7 +32,7 @@ type MedicationHandler struct {
 // ListMedications — GET /api/medications
 func (h *MedicationHandler) ListMedications(c *gin.Context) {
 	rows, err := h.DB.QueryContext(c.Request.Context(),
-		`SELECT id, name, dose, COALESCE(notes,''), created_at FROM medications ORDER BY id`)
+		`SELECT id, name, COALESCE(dose,''), COALESCE(notes,''), created_at FROM medications ORDER BY id`)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "query medications: " + err.Error()})
 		return
@@ -58,8 +58,8 @@ func (h *MedicationHandler) CreateMedication(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid body: " + err.Error()})
 		return
 	}
-	if in.Name == "" || in.Dose == "" {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "name and dose required"})
+	if in.Name == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
 
@@ -74,7 +74,7 @@ func (h *MedicationHandler) CreateMedication(c *gin.Context) {
 
 	var m Medication
 	h.DB.QueryRowContext(c.Request.Context(),
-		`SELECT id, name, dose, COALESCE(notes,''), created_at FROM medications WHERE id=?`, id).
+		`SELECT id, name, COALESCE(dose,''), COALESCE(notes,''), created_at FROM medications WHERE id=?`, id).
 		Scan(&m.ID, &m.Name, &m.Dose, &m.Notes, &m.CreatedAt)
 
 	c.JSON(http.StatusCreated, m)
@@ -109,7 +109,7 @@ func (h *MedicationHandler) UpdateMedication(c *gin.Context) {
 
 	var m Medication
 	h.DB.QueryRowContext(c.Request.Context(),
-		`SELECT id, name, dose, COALESCE(notes,''), created_at FROM medications WHERE id=?`, id).
+		`SELECT id, name, COALESCE(dose,''), COALESCE(notes,''), created_at FROM medications WHERE id=?`, id).
 		Scan(&m.ID, &m.Name, &m.Dose, &m.Notes, &m.CreatedAt)
 
 	c.JSON(http.StatusOK, m)
