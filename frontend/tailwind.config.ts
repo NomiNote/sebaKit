@@ -58,9 +58,19 @@ export default {
           '0%': { transform: 'scale(0.8)', opacity: '1' },
           '100%': { transform: 'scale(2.2)', opacity: '0' },
         },
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        slideUp: {
+          '0%': { opacity: '0', transform: 'translateY(24px) scale(0.96)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
       },
       animation: {
         pulse_ring: 'pulse_ring 1.5s ease-out infinite',
+        fadeIn: 'fadeIn 0.2s ease-out',
+        slideUp: 'slideUp 0.3s ease-out',
       },
     },
   },

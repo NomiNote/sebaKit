@@ -26,6 +26,7 @@ interface AppState {
   setTodayDoses: (d: TodayDose[]) => void;
   setDeviceConnected: (c: boolean) => void;
   setActiveAlert: (a: ActiveAlert) => void;
+  clearAlert: () => void;
   resolveAlert: (eventId: number) => void;
   patchEvent: (eventId: number, status: 'completed' | 'missed') => void;
   setSettings: (s: AppSettings) => void;
@@ -50,6 +51,7 @@ export const useStore = create<AppState>((set) => ({
   setSettings: (settings) => set({ settings }),
 
   setActiveAlert: (activeAlert) => set({ activeAlert }),
+  clearAlert: () => set({ activeAlert: null }),
 
   resolveAlert: (eventId) =>
     set((s) => (s.activeAlert?.eventId === eventId ? { activeAlert: null } : {})),

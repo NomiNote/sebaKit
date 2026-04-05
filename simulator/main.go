@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -30,16 +31,13 @@ type HelloMsg struct {
 }
 
 type TriggerMsg struct {
-	Type           string `json:"type"`
-	EventID        int64  `json:"eventId"`
-	MedicationName string `json:"medicationName"`
-	ScheduledAt    string `json:"scheduledAt"`
+	Type     string `json:"type"`
+	Duration int    `json:"duration"` // alert duration in minutes
 }
 
 type AckMsg struct {
-	Type    string `json:"type"`
-	EventID int64  `json:"eventId"`
-	Status  string `json:"status"` // "completed" or "missed"
+	Type   string `json:"type"`
+	Status string `json:"status"` // "completed" or "missed"
 }
 
 // ─── REST types ─────────────────────────────────────────────────────────────
@@ -71,9 +69,8 @@ type TodayDose struct {
 // ─── Pending alert store ────────────────────────────────────────────────────
 
 type PendingAlert struct {
-	EventID        int64
-	MedicationName string
-	ScheduledAt    string
+	Duration  int
+	ReceivedAt string
 }
 
 var (
@@ -87,14 +84,11 @@ func addPending(a PendingAlert) {
 	pendingAlerts = append(pendingAlerts, a)
 }
 
-func removePending(eventID int64) {
+func removePendingByIndex(idx int) {
 	pendingMu.Lock()
 	defer pendingMu.Unlock()
-	for i, a := range pendingAlerts {
-		if a.EventID == eventID {
-			pendingAlerts = append(pendingAlerts[:i], pendingAlerts[i+1:]...)
-			return
-		}
+	if idx >= 0 && idx < len(pendingAlerts) {
+		pendingAlerts = append(pendingAlerts[:idx], pendingAlerts[idx+1:]...)
 	}
 }
 
@@ -177,11 +171,10 @@ func main() {
 				var trigger TriggerMsg
 				json.Unmarshal(raw, &trigger)
 				addPending(PendingAlert{
-					EventID:        trigger.EventID,
-					MedicationName: trigger.MedicationName,
-					ScheduledAt:    trigger.ScheduledAt,
+					Duration:   trigger.Duration,
+					ReceivedAt: time.Now().Format("15:04:05"),
 				})
-				fmt.Printf("\n\n🔔 ALERT: Time to take %s (event #%d)\n", trigger.MedicationName, trigger.EventID)
+				fmt.Printf("\n\n🔔 ALERT: Medication reminder! (duration: %d min)\n", trigger.Duration)
 				fmt.Print("sim> ")
 			default:
 				// silently ignore other messages
@@ -370,7 +363,7 @@ func showPendingAlerts() {
 	}
 	fmt.Println("  Pending alerts:")
 	for i, a := range alerts {
-		fmt.Printf("    %d) Event #%d — %s\n", i+1, a.EventID, a.MedicationName)
+		fmt.Printf("    %d) Duration: %d min — received at %s\n", i+1, a.Duration, a.ReceivedAt)
 	}
 }
 
@@ -383,7 +376,7 @@ func handleAck(conn *websocket.Conn, scanner *bufio.Scanner, status string) {
 
 	fmt.Println("  Pending alerts:")
 	for i, a := range alerts {
-		fmt.Printf("    %d) Event #%d — %s\n", i+1, a.EventID, a.MedicationName)
+		fmt.Printf("    %d) Duration: %d min — received at %s\n", i+1, a.Duration, a.ReceivedAt)
 	}
 
 	fmt.Print("  Select alert number (or 'all'): ")
@@ -392,29 +385,33 @@ func handleAck(conn *websocket.Conn, scanner *bufio.Scanner, status string) {
 	}
 	choice := strings.TrimSpace(scanner.Text())
 
-	var toAck []PendingAlert
+	var indices []int
 	if choice == "all" {
-		toAck = alerts
+		for i := range alerts {
+			indices = append(indices, i)
+		}
 	} else {
 		idx, err := strconv.Atoi(choice)
 		if err != nil || idx < 1 || idx > len(alerts) {
 			fmt.Println("  Invalid selection.")
 			return
 		}
-		toAck = []PendingAlert{alerts[idx-1]}
+		indices = []int{idx - 1}
 	}
 
-	for _, a := range toAck {
-		ack := AckMsg{Type: "ack", EventID: a.EventID, Status: status}
+	// Process in reverse order so indices stay valid.
+	for i := len(indices) - 1; i >= 0; i-- {
+		idx := indices[i]
+		ack := AckMsg{Type: "ack", Status: status}
 		if err := conn.WriteJSON(ack); err != nil {
-			fmt.Printf("  ❌ Failed to send ack for event #%d: %v\n", a.EventID, err)
+			fmt.Printf("  ❌ Failed to send ack: %v\n", err)
 			continue
 		}
-		removePending(a.EventID)
+		removePendingByIndex(idx)
 		if status == "completed" {
-			fmt.Printf("  ✅ Box opened — event #%d (%s) marked completed\n", a.EventID, a.MedicationName)
+			fmt.Printf("  ✅ Box opened — alert #%d marked completed\n", idx+1)
 		} else {
-			fmt.Printf("  ❌ Event #%d (%s) marked missed\n", a.EventID, a.MedicationName)
+			fmt.Printf("  ❌ Alert #%d marked missed\n", idx+1)
 		}
 	}
 }

@@ -1,8 +1,9 @@
-// App.tsx — root layout with routing and WebSocket connection.
+// App.tsx — root layout with routing, WebSocket connection, and alert overlay.
 
 import { useWebSocket } from './hooks/useWebSocket';
 import { Routes, Route } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
+import AlertOverlay from './components/AlertOverlay';
 import Dashboard from './pages/Dashboard';
 import SchedulePage from './pages/Schedule';
 import HistoryPage from './pages/History';
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
       <BottomNav />
+      <AlertOverlay />
     </div>
   );
 }

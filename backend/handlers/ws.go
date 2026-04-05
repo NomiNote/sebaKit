@@ -28,11 +28,10 @@ type TriggerMsg struct {
 	Duration int    `json:"duration"` // alert duration in minutes
 }
 
-// AckMsg is sent from device → backend.
+// AckMsg is sent from device → backend (no eventId — backend resolves internally).
 type AckMsg struct {
-	Type    string `json:"type"`
-	EventID int64  `json:"eventId"`
-	Status  string `json:"status"`
+	Type   string `json:"type"`
+	Status string `json:"status"`
 }
 
 // CaregiverMsg is broadcast from backend → caregiver browsers.
@@ -189,14 +188,36 @@ func (h *Hub) handleDeviceMessage(raw []byte) {
 	}
 }
 
-// handleAck processes a device acknowledgement: marks event completed and broadcasts.
+// handleAck processes a device acknowledgement.
+// Since the device doesn't know the eventId, we resolve the most recent pending event.
 func (h *Hub) handleAck(ack AckMsg) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	_, err := h.db.Exec(
-		`UPDATE events SET status='completed', confirmed_by_device=1, completed_at=? WHERE id=?`,
-		now, ack.EventID,
-	)
+	// Find the most recent pending event.
+	var eventID int64
+	err := h.db.QueryRow(
+		`SELECT id FROM events WHERE status='pending' ORDER BY scheduled_at DESC LIMIT 1`,
+	).Scan(&eventID)
+	if err != nil {
+		log.Printf("ack: no pending event found: %v", err)
+		return
+	}
+
+	status := "completed"
+	if ack.Status == "missed" {
+		status = "missed"
+	}
+
+	if status == "completed" {
+		_, err = h.db.Exec(
+			`UPDATE events SET status='completed', confirmed_by_device=1, completed_at=? WHERE id=?`,
+			now, eventID,
+		)
+	} else {
+		_, err = h.db.Exec(
+			`UPDATE events SET status='missed' WHERE id=?`, eventID,
+		)
+	}
 	if err != nil {
 		log.Printf("ack db update: %v", err)
 		return
@@ -204,19 +225,26 @@ func (h *Hub) handleAck(ack AckMsg) {
 
 	// Cancel the missed-timeout goroutine.
 	h.timerMu.Lock()
-	if cancel, ok := h.pendingTimers[ack.EventID]; ok {
+	if cancel, ok := h.pendingTimers[eventID]; ok {
 		cancel()
-		delete(h.pendingTimers, ack.EventID)
+		delete(h.pendingTimers, eventID)
 	}
 	h.timerMu.Unlock()
 
-	log.Printf("Event %d completed (device confirmed)", ack.EventID)
+	log.Printf("Event %d marked %s (device ack)", eventID, status)
 
-	h.BroadcastToCaregivers(CaregiverMsg{
-		Type:        "completed",
-		EventID:     ack.EventID,
-		ConfirmedAt: now,
-	})
+	if status == "completed" {
+		h.BroadcastToCaregivers(CaregiverMsg{
+			Type:        "completed",
+			EventID:     eventID,
+			ConfirmedAt: now,
+		})
+	} else {
+		h.BroadcastToCaregivers(CaregiverMsg{
+			Type:    "missed",
+			EventID: eventID,
+		})
+	}
 }
 
 // ─── Trigger & Broadcast ───────────────────────────────────────────────────
@@ -239,11 +267,12 @@ func (h *Hub) TriggerDevice(medicationID, scheduleID int64, medName string) (int
 	dev := h.device
 	h.mu.RUnlock()
 
+	duration := 5
+	if h.GetAlertDuration != nil {
+		duration = h.GetAlertDuration()
+	}
+
 	if dev != nil {
-		duration := 5
-		if h.GetAlertDuration != nil {
-			duration = h.GetAlertDuration()
-		}
 		msg := TriggerMsg{Type: "trigger", Duration: duration}
 		h.mu.Lock()
 		err = dev.WriteJSON(msg)
@@ -263,15 +292,19 @@ func (h *Hub) TriggerDevice(medicationID, scheduleID int64, medName string) (int
 		ScheduledAt: now,
 	})
 
-	// Start 10-minute timeout goroutine.
-	h.startMissedTimer(eventID)
+	// Start missed-timeout goroutine using the settings-based duration.
+	timeoutMin := duration
+	if timeoutMin <= 0 {
+		timeoutMin = 5
+	}
+	h.startMissedTimer(eventID, time.Duration(timeoutMin)*time.Minute)
 
 	return eventID, nil
 }
 
-// startMissedTimer starts a goroutine that marks the event as missed after 10 minutes
-// unless cancelled (i.e., ack received).
-func (h *Hub) startMissedTimer(eventID int64) {
+// startMissedTimer starts a goroutine that marks the event as missed after the
+// given duration unless cancelled (i.e., ack received).
+func (h *Hub) startMissedTimer(eventID int64, timeout time.Duration) {
 	done := make(chan struct{})
 	cancel := func() { close(done) }
 
@@ -283,7 +316,7 @@ func (h *Hub) startMissedTimer(eventID int64) {
 		select {
 		case <-done:
 			return // ack received, timer cancelled
-		case <-time.After(10 * time.Minute):
+		case <-time.After(timeout):
 			h.BroadcastMissed(eventID)
 			h.timerMu.Lock()
 			delete(h.pendingTimers, eventID)
