@@ -35,8 +35,10 @@ function statusChip(status: TodayDose['status']) {
 export default function Dashboard() {
   const weekEvents = useStore((s) => s.weekEvents);
   const todayDoses = useStore((s) => s.todayDoses);
+  const settings = useStore((s) => s.settings);
   const setWeekEvents = useStore((s) => s.setWeekEvents);
   const setTodayDoses = useStore((s) => s.setTodayDoses);
+  const patientName = settings.patient_name || 'the patient';
 
   useEffect(() => {
     getEvents(7).then(setWeekEvents).catch(console.error);
@@ -59,7 +61,7 @@ export default function Dashboard() {
     if (missedDoses > 0) {
       heroColor = 'from-danger-400 to-danger-500';
       heroLabel = `${missedDoses} Missed`;
-      heroSub = 'Please check on Margaret';
+      heroSub = `Please check on ${patientName}`;
     } else if (dueDoses > 0) {
       heroColor = 'from-amber-400 to-amber-500';
       heroLabel = `${dueDoses} Overdue`;
