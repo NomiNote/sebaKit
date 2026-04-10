@@ -1,5 +1,12 @@
 # med-reminder
 
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A local demo of a medication reminder IoT system. A caregiver monitors a
 patient via a React web app. At scheduled times, the Go backend triggers an
 IoT pill-box device over WebSocket. The device buzzes until the patient
@@ -23,6 +30,33 @@ completing the loop.
 - **SQLite** persists all state at `./backend/data/meds.db`
 
 ## Quick Start
+
+### Option 1 — Docker (Recommended)
+
+Run the frontend and backend together in a single container with split-pane logs:
+
+```bash
+# Build the image
+docker build -t sebakit .
+
+# Run with interactive tmux session
+docker run -it --rm -p 5173:5173 -p 8080:8080 sebakit
+```
+
+This opens a `tmux` session with two panes:
+- **Left pane** — Go backend logs
+- **Right pane** — Vite dev server logs
+
+> **Tip:** Use `Ctrl+B` then arrow keys to switch between tmux panes.
+> To exit, press `Ctrl+B` then `d` to detach, or `Ctrl+C` in each pane.
+
+To persist the SQLite database between runs, mount a volume:
+
+```bash
+docker run -it --rm -p 5173:5173 -p 8080:8080 -v sebakit-data:/app/data sebakit
+```
+
+### Option 2 — Manual
 
 ```bash
 # Terminal 1 — Backend
@@ -60,13 +94,19 @@ in real-time.
 | DELETE | `/api/schedules/:id`    | Delete schedule                |
 | GET    | `/api/events?days=7`    | List events (with med name)    |
 | GET    | `/api/status`           | Device connected + pending     |
+| GET    | `/api/today-status`     | Today's medication status      |
+| GET    | `/api/settings`         | Get app settings               |
+| PUT    | `/api/settings`         | Update app settings            |
 | POST   | `/api/debug/trigger`    | Fire next due immediately      |
 | WS     | `/ws/caregiver`         | Browser WebSocket              |
 | WS     | `/ws/device`            | Device WebSocket               |
 
 ## Tech Stack
 
-- **Backend:** Go 1.22+, gorilla/mux, gorilla/websocket, mattn/go-sqlite3, robfig/cron/v3
-- **Frontend:** React 18, Vite, TypeScript, Tailwind CSS v3, React Router v6, Zustand
-- **Database:** SQLite
-- **Simulator:** Standalone Go CLI
+| Layer | Technologies |
+|-------|-------------|
+| **Backend** | Go 1.25, Gin, gorilla/websocket, modernc/sqlite, robfig/cron/v3 |
+| **Frontend** | React 18, Vite 6, TypeScript, Tailwind CSS 3, React Router 6, Zustand |
+| **Database** | SQLite |
+| **Simulator** | Standalone Go CLI |
+| **DevOps** | Docker, multi-stage build, tmux |
