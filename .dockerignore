@@ -1,0 +1,39 @@
+# ── Excluded services ────────────────────────
+simulator/
+esp32_firmware/
+
+# ── Version control ──────────────────────────
+.git/
+.gitignore
+
+# ── Dependencies (reinstalled in build) ──────
+node_modules/
+
+# ── Build artifacts ──────────────────────────
+frontend/dist/
+backend/backend.exe
+backend/backend
+*.exe
+
+# ── Database (runtime volume) ────────────────
+backend/data/
+
+# ── Editor / IDE ─────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Misc ─────────────────────────────────────
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
+docs.md
+task.md
+walkthrough.md
+issue.md
+README.md
