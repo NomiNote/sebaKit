@@ -1,72 +1,87 @@
-# med-reminder
+# SebaKit — Smart Medication Reminder & Room Monitoring System
 
-A local demo of a medication reminder IoT system. A caregiver monitors a
-patient via a React web app. At scheduled times, the Go backend triggers an
-IoT pill-box device over WebSocket. The device buzzes until the patient
-physically opens it (reed switch simulation). The acknowledgement flows back,
-completing the loop.
+SebaKit is a fully-functional, real-time IoT healthcare system. It monitors a patient's room environment, alerts them at scheduled times to take their medication, and automatically sends a WhatsApp message to their guardian/caregiver if a dose is missed.
 
-## Architecture
+The system is built on **Supabase** (as the database, authentication, and realtime backend), a **React (TypeScript & Vite)** web application for caregivers, and an **ESP32-C3 Super Mini** IoT hardware device.
+
+---
+
+## 🚀 Key Features
+
+* **📅 Smart Medication Scheduling**: Caregivers schedule recurring daily doses. The database automatically compiles schedule instances for the day.
+* **🔊 Hardware Alarms & Box Sensor**: The ESP32-C3 rings a buzzer and flashes an LED at dose times. A magnetic contact sensor checks if the pill-box is physically opened to confirm ingestion.
+* **💬 Twilio WhatsApp Alerts**: If a medication window is missed, the ESP32 performs a secure HTTPS POST request to the **Twilio Messages API** to send a WhatsApp notification to the guardian's phone number, warning them of the missed dose.
+* **🍃 Live Room Monitoring**: Continuous ambient monitoring of Temperature & Humidity (**GY-BME280**). Sensor readings are posted to Supabase every 30s.
+* **⚡ Real-time Telemetry Dashboard**: The React caregiver dashboard subscribes to Supabase Realtime. Ambient room parameters, alarm status, and logs are updated instantly without reloading.
+
+---
+
+## 📐 System Architecture
 
 ```
-┌────────────┐   REST/WS    ┌───────────┐   WS     ┌────────────┐
-│  React App │ ←──────────→ │ Go Backend│ ←─────→  │ Simulator  │
-│  (Browser) │  :5173→:8080 │  (:8080)  │          │ (CLI)      │
-└────────────┘              │  SQLite   │          └────────────┘
-                            └───────────┘
+                 ┌────────────────────────────────┐
+                 │                                │
+                 │      React Web Application     │
+                 │      (Caregiver Dashboard)     │
+                 │                                │
+                 └──────────────▲───┬─────────────┘
+                                │   │
+              Supabase Realtime │   │ Supabase JS Client
+              INSERT / UPDATE   │   │ (REST CRUD)
+                                │   ▼
+                 ┌────────────────────────────────┐
+                 │                                │
+                 │            Supabase            │
+                 │     (PostgreSQL Database)      │
+                 │                                │
+                 └──────────────▲───┬─────────────┘
+                                │   │
+               HTTPS JSON POST  │   │ HTTPS JSON GET
+                 Sensor Data    │   │ Sync Schedules/Settings
+                                │   ▼
+┌────────────────┐      ┌───────┴────────────────┐
+│   Twilio API   │      │                        │
+│   (WhatsApp    │ ◄────┼───   ESP32-C3 Device   │
+│   Messages)    │ HTTPS│    (Smart Pill-Box)    │
+└────────────────┘      └────────────────────────┘
 ```
 
-- **Go backend** (`:8080`) serves REST API + two WebSocket endpoints
-- **Scheduler goroutine** fires cron jobs at medication times, triggering the IoT device (simulator) via `/ws/device`
-- **Simulator** acks after a simulated delay (4-8 seconds)
-- **Backend** records completion and broadcasts to all caregiver browser clients over `/ws/caregiver`
-- **SQLite** persists all state at `./backend/data/meds.db`
+---
 
-## Quick Start
+## 📂 Repository Structure
 
+* **`esp32_c3/`**: Arduino firmware for the ESP32-C3 Super Mini microcontroller. Integrates BME280, SSD1306 OLED, Wi-Fi Manager, local non-volatile storage (Preferences) for offline queueing, and direct Twilio WhatsApp HTTPS messaging.
+* **`frontend-supabase/`**: React, Vite, Tailwind CSS, TypeScript, and Zustand dashboard client communicating directly with Supabase.
+* **`supabase-sql/`**: SQL migration scripts for database configuration.
+  * `001_complete_setup.sql`: Core schema, custom ENUMs, triggers, and daily medication instance generation logic.
+  * `002_room_monitoring_and_twilio.sql`: Room Monitoring table, air quality calculation function/trigger, and Twilio configuration columns.
+
+---
+
+## ⚡ Quick Start
+
+### 1. Run the Web Application
 ```bash
-# Terminal 1 — Backend
-cd backend && go run .
+# Navigate to web project
+cd frontend-supabase
 
-# Terminal 2 — IoT Simulator
-cd simulator && go run .
+# Install dependencies
+npm install
 
-# Terminal 3 — Frontend
-cd frontend && npm install && npm run dev
+# Run the development server
+npm run dev
 ```
+Open [http://localhost:5173](http://localhost:5173) in your browser. Ensure your `.env` file contains your `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 
-Open **http://localhost:5173** in your browser.
+### 2. Setup the Database
+* Create a new Supabase project.
+* In the **SQL Editor**, run the scripts in order:
+  1. [001_complete_setup.sql](file:///c:/Users/Administrator/Downloads/sebaKit-supabase/sebaKit-supabase/supabase-sql/001_complete_setup.sql)
+  2. [002_room_monitoring_and_twilio.sql](file:///c:/Users/Administrator/Downloads/sebaKit-supabase/sebaKit-supabase/supabase-sql/002_room_monitoring_and_twilio.sql)
 
-## Trigger a Demo Reminder Manually
-
-```bash
-curl -X POST http://localhost:8080/api/debug/trigger
-```
-
-This fires the first active schedule immediately. The simulator will receive the
-trigger, wait a few seconds, then ack — and the browser dashboard will update
-in real-time.
-
-## API Endpoints
-
-| Method | Path                    | Description                    |
-|--------|------------------------|--------------------------------|
-| GET    | `/api/medications`      | List all medications           |
-| POST   | `/api/medications`      | Create medication              |
-| PUT    | `/api/medications/:id`  | Update medication              |
-| DELETE | `/api/medications/:id`  | Delete medication              |
-| GET    | `/api/schedules`        | List schedules (with med name) |
-| POST   | `/api/schedules`        | Create schedule                |
-| DELETE | `/api/schedules/:id`    | Delete schedule                |
-| GET    | `/api/events?days=7`    | List events (with med name)    |
-| GET    | `/api/status`           | Device connected + pending     |
-| POST   | `/api/debug/trigger`    | Fire next due immediately      |
-| WS     | `/ws/caregiver`         | Browser WebSocket              |
-| WS     | `/ws/device`            | Device WebSocket               |
-
-## Tech Stack
-
-- **Backend:** Go 1.22+, gorilla/mux, gorilla/websocket, mattn/go-sqlite3, robfig/cron/v3
-- **Frontend:** React 18, Vite, TypeScript, Tailwind CSS v3, React Router v6, Zustand
-- **Database:** SQLite
-- **Simulator:** Standalone Go CLI
+### 3. Flash the ESP32 Hardware
+* Open `esp32_c3/sebakit_firmware.ino` in Arduino IDE.
+* Configure your Supabase project credentials and Twilio WhatsApp parameters.
+* Select the **ESP32C3 Dev Module** board and target COM port.
+* Click **Upload**.
+* Refer to [UPGRADE_SETUP_GUIDE.md](file:///c:/Users/Administrator/Downloads/sebaKit-supabase/sebaKit-supabase/UPGRADE_SETUP_GUIDE.md) for full physical wiring and installation instructions.

@@ -1,280 +1,162 @@
-# sebaKit — Agent Onboarding Guide
+# SebaKit — Developer Reference Manual & Onboarding Guide
 
-> **What is this?** A local medication-reminder IoT demo. A caregiver monitors a patient via a React web app; at scheduled times the Go backend triggers an IoT pill-box (simulator) over WebSocket. The device buzzes until the patient opens it, then acks — completing the loop.
-
----
-
-## Quick Start (3 terminals)
-
-```bash
-# 1 — Backend (Go)
-cd backend && go run .
-
-# 2 — IoT Simulator (Go)
-cd simulator && go run .
-
-# 3 — Frontend (React)
-cd frontend && npm install && npm run dev
-```
-
-Open `http://localhost:5173`. Trigger a demo reminder: `curl -X POST http://localhost:8080/api/debug/trigger`.
+Welcome to the **SebaKit** developer guide. This document serves as a comprehensive onboarding reference detailing the technical architecture, data model, realtime event flow, and firmware states of the Supabase & ESP32-C3 upgraded system.
 
 ---
 
-## Architecture
+## 🛠️ Tech Stack & Dependencies
 
-```
-┌─────────────┐   REST / WS    ┌────────────┐    WS     ┌────────────┐
-│  React App  │ ←────────────→ │ Go Backend │ ←───────→ │ Simulator  │
-│  :5173      │  proxied       │  :8080     │           │ (CLI)      │
-└─────────────┘                │  SQLite    │           └────────────┘
-                               └────────────┘
-```
-
-- **Frontend → Backend**: Vite dev proxy forwards `/api/*` and `/ws/*` to `:8080` (see `vite.config.ts`).
-- **Backend → Simulator**: Single WebSocket at `/ws/device`.
-- **Backend → Browser(s)**: Broadcast WebSocket at `/ws/caregiver`.
+| Layer | Technology | Key Libraries & SDKs |
+| :--- | :--- | :--- |
+| **Microcontroller Hardware** | ESP32-C3 (Super Mini) | Arduino IDE Framework, `Adafruit BME280`, `Adafruit SSD1306`, `WiFiManager`, `ArduinoJson`, `NTPClient` |
+| **Database & Backend** | Supabase (Managed PostgreSQL) | PostgreSQL 15, PostgREST (Auto-REST API), Supabase Realtime Engine, PL/pgSQL functions |
+| **Caregiver Dashboard** | React 19, TypeScript 6, Vite 8 | `@supabase/supabase-js`, `zustand` (State Management), `react-router-dom` (Routing), `tailwindcss` (Styling) |
+| **Communication / Alerts** | Twilio Messages API (WhatsApp) | Direct HTTPS REST requests via ESP32 `WiFiClientSecure` |
 
 ---
 
-## Tech Stack
+## 🗄️ Database Schema & Database Logic
 
-| Layer      | Stack                                                                     |
-|------------|---------------------------------------------------------------------------|
-| Backend    | Go 1.25, **Gin**, gorilla/websocket, robfig/cron/v3, modernc.org/sqlite  |
-| Frontend   | React 18, Vite 6, TypeScript 5, **Tailwind CSS v3**, React Router v6, **Zustand** |
-| Database   | SQLite (WAL mode, single-connection pool) at `backend/data/meds.db`      |
-| Simulator  | Standalone Go CLI, gorilla/websocket                                      |
+The backend runs entirely on Supabase. The database structure is defined in two schema files under `supabase-sql/`.
 
----
+### 1. Database Tables & Custom Types
+* **Custom Types**:
+  * `medicine_status` ENUM: `'pending'`, `'taken'`, `'missed'`
+  * `event_type` ENUM: `'created'`, `'taken'`, `'missed'`, `'skipped'`
+* **`medications`**: The master catalog of scheduled items.
+  * `id` (UUID, PK), `device_id` (TEXT), `name` (TEXT), `dose` (TEXT), `notes` (TEXT), `created_at` / `updated_at`.
+* **`schedules`**: Recurring rule definitions for medication doses.
+  * `id` (UUID, PK), `medication_id` (UUID, FK), `device_id` (TEXT), `time_of_day` (TIME), `days_of_week` (TEXT, e.g., `'1,2,3,4,5,6,7'`), `start_date` (DATE), `end_date` (DATE), `active` (BOOLEAN).
+* **`medicines`**: Daily concrete instances generated from `schedules`. The ESP32 device queries this table to know when to sound alarms.
+  * `id` (UUID, PK), `medication_id` (UUID, FK), `schedule_id` (UUID, FK), `device_id` (TEXT), `name` (TEXT), `dose` (TEXT), `time` (TIME), `date` (DATE), `status` (`medicine_status`), `taken_at` (TIMESTAMPTZ).
+* **`device_settings`**: Global configuration parameters for the pill-box device.
+  * `id` (UUID, PK), `device_id` (TEXT, Unique), `patient_name` (TEXT), `patient_type` (TEXT), `alert_duration_min` (INTEGER), `timezone` (TEXT), `guardian_phone` (TEXT), `twilio_call_enabled` (BOOLEAN).
+* **`room_monitoring`**: Live sensor telemetry logs uploaded by the device.
+  * `id` (UUID, PK), `device_id` (TEXT), `temperature` (REAL), `humidity` (REAL), `created_at` (TIMESTAMPTZ).
+  * *Note: The columns `eco2` and `tvoc` exist in the legacy database schema but are no longer active, as the CCS811 sensor has been deprecated.*
+* **`events_log`**: Audit trail of statuses for history reports.
+  * `id` (UUID, PK), `medicine_id` (UUID, FK), `device_id` (TEXT), `event_type` (`event_type`), `details` (JSONB), `created_at` (TIMESTAMPTZ).
 
-## Project Layout
-
-```
-sebaKit/
-├── backend/
-│   ├── main.go                  # Entrypoint — Gin router, CORS, graceful shutdown
-│   ├── db/
-│   │   ├── schema.sql           # DDL (embedded via go:embed)
-│   │   └── db.go                # Open, migrate, seed demo data
-│   ├── handlers/
-│   │   ├── ws.go                # WebSocket Hub — trigger, ack, broadcast, missed timers
-│   │   ├── medications.go       # CRUD for medications table
-│   │   ├── schedule.go          # CRUD for schedules table (+scheduler reload on change)
-│   │   └── events.go            # Events list, status, debug trigger
-│   ├── middleware/              # (empty — CORS is inline in main.go)
-│   ├── models/                  # (empty — structs live in handlers)
-│   ├── scheduler/
-│   │   └── scheduler.go         # Cron engine — loads active schedules into robfig/cron
-│   ├── go.mod / go.sum
-│   └── data/meds.db             # Created at runtime
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx              # Root layout + React Router routes
-│   │   ├── main.tsx             # ReactDOM.createRoot entry
-│   │   ├── api/
-│   │   │   └── client.ts        # Typed fetch wrappers (all REST endpoints)
-│   │   ├── hooks/
-│   │   │   └── useWebSocket.ts  # Connects to /ws/caregiver, dispatches to Zustand store
-│   │   ├── store/
-│   │   │   └── useStore.ts      # Zustand store — central app state
-│   │   ├── components/
-│   │   │   ├── BottomNav.tsx
-│   │   │   ├── PatientCard.tsx
-│   │   │   ├── MedRow.tsx
-│   │   │   ├── StreakWidget.tsx
-│   │   │   └── AdherenceDonut.tsx
-│   │   ├── pages/
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── Schedule.tsx     # Add/delete meds + schedules
-│   │   │   ├── Alert.tsx        # Active reminder alert overlay
-│   │   │   └── History.tsx      # 7-day event log
-│   │   └── index.css            # Tailwind directives + custom styles
-│   ├── vite.config.ts           # Dev proxy to backend (:8080)
-│   ├── tailwind.config.ts
-│   ├── tsconfig.json
-│   └── package.json
-├── simulator/
-│   ├── main.go                  # IoT device simulator CLI
-│   ├── go.mod / go.sum
-│   └── simulator.exe
-└── README.md
-```
+### 2. Triggers & Custom Functions
+* **Auto-Log Status Changes**: The trigger `on_medicine_status_change` runs the function `log_medicine_status_change()` before any update on `medicines`. It logs transition audits into `events_log` and sets `taken_at` automatically if status becomes `'taken'`.
+* **Generate Daily Medicine Instances**: `generate_daily_medicines(target_date DATE, target_device TEXT)` generates all `medicines` rows for a particular date by matching active `schedules` and their `days_of_week` array. It is triggered automatically when creating a new schedule or loading the web app.
+* **Telemetry Cleanup**: `cleanup_old_room_data()` deletes entries in `room_monitoring` older than 24 hours to keep the database size optimized.
 
 ---
 
-## Database Schema
+## ⚡ Web App Frontend Architecture
 
-Four tables in `backend/db/schema.sql` (auto-applied on startup):
+The frontend is located under `frontend-supabase/` and communicates directly with your Supabase database.
 
-```sql
-medications (id PK, name, dose, notes, created_at)
-schedules   (id PK, medication_id FK→medications, time_of_day "HH:MM", days_of_week "1,2,...,7", active)
-events      (id PK, medication_id FK, schedule_id FK, scheduled_at, completed_at, status ∈ {pending,completed,missed}, confirmed_by_device)
-caregivers  (id PK, name, email)
-```
-
-- `db.Open("./data")` creates the dir, opens `meds.db` with WAL+FK pragmas, runs schema, seeds demo data (3 meds, 5 schedules, 6 past events) if empty.
-- **Single-connection pool** (`SetMaxOpenConns(1)`) — SQLite limitation.
-
----
-
-## REST API
-
-| Method | Path                   | Handler                          | Notes |
-|--------|------------------------|----------------------------------|-------|
-| GET    | `/api/medications`     | `MedicationHandler.ListMedications` | |
-| POST   | `/api/medications`     | `MedicationHandler.CreateMedication` | Body: `{name, dose, notes}` |
-| PUT    | `/api/medications/:id` | `MedicationHandler.UpdateMedication` | Body: `{name, dose, notes}` |
-| DELETE | `/api/medications/:id` | `MedicationHandler.DeleteMedication` | |
-| GET    | `/api/schedules`       | `ScheduleHandler.ListSchedules`  | Joins med name |
-| POST   | `/api/schedules`       | `ScheduleHandler.CreateSchedule` | Body: `{medicationId, timeOfDay, daysOfWeek}` — triggers `scheduler.Reload()` |
-| DELETE | `/api/schedules/:id`   | `ScheduleHandler.DeleteSchedule` | Triggers `scheduler.Reload()` |
-| GET    | `/api/events?days=7`   | `EventHandler.ListEvents`        | Past N days, joins med name |
-| GET    | `/api/status`          | `EventHandler.GetStatus`         | Returns `{deviceConnected, pendingCount}` |
-| POST   | `/api/debug/trigger`   | `EventHandler.DebugTrigger`      | Fires the first active schedule immediately |
-
-The backend uses **Gin** (`gin-gonic/gin`). All handlers receive `*gin.Context`. JSON responses use `c.JSON()`. Path params via `c.Param("id")`, query params via `c.DefaultQuery()`.
-
----
-
-## WebSocket Protocol
-
-Two WS endpoints, both use JSON messages with a `type` field for dispatch.
-
-### `/ws/device` (Backend ↔ Simulator)
-
-| Direction | Type | Payload | Purpose |
-|-----------|------|---------|---------|
-| Device → Backend | `hello` | `{type, deviceId}` | Handshake on connect |
-| Backend → Device | `trigger` | `{type, eventId, medicationName}` | Fire a reminder |
-| Device → Backend | `ack` | `{type, eventId, status:"completed"}` | Patient opened pill box |
-
-### `/ws/caregiver` (Backend → Browser)
-
-| Type | Payload | When |
-|------|---------|------|
-| `status` | `{type, deviceConnected}` | On connect + device connect/disconnect |
-| `trigger` | `{type, eventId, medicationName, scheduledAt}` | Reminder fired |
-| `completed` | `{type, eventId, confirmedAt}` | Device ack received |
-| `missed` | `{type, eventId}` | 10-min timeout expired without ack |
-
-**Key behaviour**: When a trigger fires, a 10-minute goroutine timer starts. If no `ack` arrives, the event is marked `missed` and broadcast. If `ack` arrives, the timer is cancelled via a channel.
-
----
-
-## Frontend State Management
-
-**Zustand store** (`src/store/useStore.ts`) holds all app state:
-
+### 1. State Management (Zustand)
+`frontend-supabase/src/store/useStore.ts` holds all state:
 ```typescript
 interface AppState {
   medications: Medication[];
   schedules: Schedule[];
-  todayEvents: MedEvent[];
-  weekEvents: MedEvent[];
-  deviceConnected: boolean;
-  activeAlert: ActiveAlert | null;  // {eventId, medicationName, scheduledAt}
+  todayMedicines: Medicine[];
+  deviceSettings: DeviceSettings | null;
+  roomData: RoomMonitoring | null;       // Live sensor telemetry (Temperature & Humidity only)
+  loading: boolean;
+  // actions...
 }
 ```
 
-- `useWebSocket` hook auto-connects to `/ws/caregiver` (with exponential backoff reconnect) and dispatches incoming messages to the store.
-- When `activeAlert` is set, `App.tsx` auto-navigates to `/alert`.
-- `patchEvent()` updates both `todayEvents` and `weekEvents` in-place for instant UI reactivity.
+### 2. Supabase Realtime Subscription Hook
+`frontend-supabase/src/hooks/useSupabaseRealtime.ts` runs on app load. It sets up two primary event listeners:
+1. **`medicines` updates**: Re-fetches today's medicines if the device marks a dose as `taken` or `missed`.
+2. **`room_monitoring` inserts**: Automatically pushes new ambient sensor records into the store state, triggering immediate UI state updates inside the `<RoomMonitor />` card on the dashboard.
 
-### Frontend Types (defined in `api/client.ts`)
+### 3. Page Routing Layout
+* `/` (**Dashboard**): Main landing page. Features general patient stats, a 2x2 grid live **Room Monitor** telemetry card (displaying current temperature & humidity), and today's schedule checklist.
+* `/schedule` (**Schedule**): Form to create new medications and manage schedules. Creating schedules automatically triggers today's medicine generation.
+* `/history` (**History**): Displays historical logs from `events_log`.
+* `/settings` (**Settings**): Configures timezone, patient details, alarm duration, guardian phone numbers, and Twilio WhatsApp alerts.
 
-```typescript
-Medication     { id, name, dose, notes, createdAt }
-MedicationInput { name, dose, notes }
-Schedule       { id, medicationId, medicationName, timeOfDay, daysOfWeek, active }
-ScheduleInput  { medicationId, timeOfDay, daysOfWeek }
-MedEvent       { id, medicationId, medicationName, scheduleId, scheduledAt, completedAt, status, confirmedByDevice }
-StatusInfo     { deviceConnected, pendingCount }
+---
+
+## 🔌 ESP32-C3 Firmware State Machine
+
+The firmware (`esp32_c3/sebakit_firmware.ino`) uses an event-driven, cooperative non-blocking loop built around a state machine:
+
+```
+                  ┌───────────────┐
+                  │  WIFI_SETUP   │ ◄─── Captive Portal Active
+                  └───────┬───────┘
+                          │ Connected
+                          ▼
+                  ┌───────────────┐
+                  │     IDLE      │ ◄─── Polls settings & medicines
+                  └───────┬───────┘      Updates sensors & POSTs data
+                          │
+            Time Matches  │  Dose Opened
+            Pending Dose  │  Within Window
+                          ▼
+                  ┌───────────────┐
+                  │     ALERT     ├──────────────┐
+                  └───────┬───────┘              │
+                          │                      │ Open Duration
+            Box Opened    │                      │ Timeout Expired
+            (Ingested)    ▼                      ▼
+                  ┌───────────────┐      ┌───────────────┐
+                  │     TAKEN     │      │    MISSED     │
+                  └───────┬───────┘      └───────┬───────┘
+                          │                      │
+                          │   Returns to Idle    │   Twilio WhatsApp Message
+                          ▼   After 1.5 Seconds  │   HTTPS POST Triggered
+                  ┌───────────────┐              ▼
+                  │     IDLE      │      ┌───────────────┐
+                  └───────────────┘      │     IDLE      │
+                                         └───────────────┘
 ```
 
----
+### 1. Key States
+* **`STATE_WIFI_SETUP`**: Initiated if no WiFi credentials exist or auto-connection fails. Starts the captive portal SSID: `SebaKit_Setup` (Pass: `12345678`).
+* **`STATE_IDLE`**: The baseline operating state. Every 30 seconds, it reads the BME280 sensor, logs values to the SSD1306 OLED, and POSTs them to the Supabase REST API. It also polls scheduled medicines.
+* **`STATE_ALERT`**: Triggered when the current device time matches a pending medication's time. Buzzes the hardware and flashes the LED.
+* **`STATE_TAKEN`**: Triggered if the metal switch is opened during an alert. Sounds success tones and updates status to `taken` on Supabase.
+* **`STATE_MISSED`**: Triggered if the alert duration (e.g. 3 minutes) expires without the patient opening the box. Updates the dose status to `missed` and initiates the Twilio WhatsApp alert.
+* **`STATE_OFFLINE`**: Safe fallback if Wi-Fi drops.
 
-## Scheduler (Cron Engine)
+### 2. Twilio WhatsApp Message Trigger
+When a missed dose event is determined:
+1. The device checks if `twilio_call_enabled` is true and `guardian_phone` has a valid number.
+2. It generates a WhatsApp message body:
+   `"🚨 *SebaKit Alert*\n\nThe patient has *missed* their *[Medicine Name]* dose scheduled at *[Time]*.\n\nPlease check on them immediately."`
+3. It performs a secure HTTPS POST to the Twilio Messages API Endpoint `/Accounts/[Account_SID]/Messages.json` with the parameters `To`, `From`, and `Body`.
+4. Authentication uses HTTP Basic Auth header (`Authorization: Basic BASE64(SID:TOKEN)`).
 
-`scheduler/scheduler.go` — wraps `robfig/cron/v3`.
-
-- On `Start()` and `Reload()`, queries all active schedules and registers cron jobs.
-- Converts `time_of_day` ("HH:MM") + `days_of_week` ("1,2,3,...,7" ISO) to standard cron expressions.
-- Day conversion: ISO Mon=1..Sun=7 → cron Mon=1..Sat=6, Sun=0.
-- Creating/deleting a schedule calls `sched.Reload()` via the `OnChange` callback in `ScheduleHandler`.
-
----
-
-## Routing (Frontend)
-
-| Path | Page Component | Purpose |
-|------|---------------|---------|
-| `/` | `Dashboard` | Patient status overview, streak, adherence donut, today's meds |
-| `/schedule` | `Schedule` | Add/delete medications and schedules |
-| `/alert` | `Alert` | Full-screen alert when a reminder fires |
-| `/history` | `History` | 7-day event log |
-
-Navigation via `BottomNav` component (persistent bottom bar).
+### 3. Offline Resiliency (Preferences Queue)
+If the device status update fails (e.g., local Wi-Fi drops), the firmware saves the pending update (e.g., `id:taken` or `id:missed`) to the ESP32's non-volatile flash storage using the `Preferences` library. On the next successful loop connection, `retryPendingUpdates()` reads this queue and PATCHes the records to Supabase.
 
 ---
 
-## Key Patterns & Conventions
+## 🛠️ Verification & Build Commands
 
-1. **No models package** — struct definitions live in the handler files and `api/client.ts`. There is no shared models package.
-2. **Handler structs** — each handler group (`MedicationHandler`, `ScheduleHandler`, `EventHandler`) is a struct with `DB *sql.DB` (and optionally `Hub *handlers.Hub`). Methods are Gin handlers.
-3. **Embedded SQL** — `schema.sql` is embedded via `//go:embed` and executed on startup.
-4. **CORS** — inline middleware in `main.go` (`Access-Control-Allow-Origin: *`).
-5. **Graceful shutdown** — backend listens for SIGINT/SIGTERM and calls `srv.Shutdown()` with 10s timeout.
-6. **Vite proxy** — in dev, `/api` and `/ws` are proxied to `:8080` so the frontend can use relative URLs.
-7. **SQLite driver** — uses `modernc.org/sqlite` (pure Go, no CGO needed).
-
----
-
-## Build & Verify Commands
+Before pushing any codebase changes, verify both type-correctness and build results.
 
 ```bash
-# Backend
-cd backend && go build ./...
+# 1. Type-check frontend project
+cd frontend-supabase
+npx tsc --noEmit
 
-# Simulator
-cd simulator && go build ./...
-
-# Frontend type-check
-cd frontend && npx tsc --noEmit
-
-# Frontend production build
-cd frontend && npm run build
+# 2. Build production assets
+npm run build
 ```
 
 ---
 
-## Common Tasks for Agents
+## 📝 Common Development Tasks
 
-### Adding a new REST endpoint
-1. Add the handler method on the appropriate handler struct in `backend/handlers/`.
-2. Register the route in `backend/main.go` inside the `api` group.
-3. Add the typed fetch wrapper in `frontend/src/api/client.ts`.
-4. If the endpoint surfaces new data, add state + setter to `useStore.ts`.
+### 1. Adjusting Sensor Parameters
+* BME280 reads temperature & humidity on the shared I2C bus.
+* Read values and modify `readAndPostSensors()` to append parameters to the JSON payload.
+* Modify the layout inside `frontend-supabase/src/components/RoomMonitor.tsx` to customize display cards.
 
-### Adding a new database table
-1. Add the `CREATE TABLE` statement to `backend/db/schema.sql`.
-2. The schema is auto-applied on startup (idempotent `IF NOT EXISTS`).
-3. Optionally add seed data in `db.go`'s `seedIfEmpty()`.
-
-### Adding a new frontend page
-1. Create the page component in `frontend/src/pages/`.
-2. Add a `<Route>` in `App.tsx`.
-3. Add a nav item in `components/BottomNav.tsx`.
-
-### Adding a new WebSocket message type
-1. Define the struct in `backend/handlers/ws.go`.
-2. Handle it in `handleDeviceMessage()` (device→backend) or broadcast via `BroadcastToCaregivers()`.
-3. Add a case in `frontend/src/hooks/useWebSocket.ts`'s `onmessage` switch.
-4. Update the Zustand store as needed.
-
-### Modifying the schedule system
-1. Update `backend/db/schema.sql` if schema changes.
-2. Update `backend/handlers/schedule.go` for CRUD changes.
-3. If the schedule format changes, update `scheduler/scheduler.go`'s `toCronExpr()`.
-4. Remember: creating/deleting schedules auto-reloads the cron engine via the `OnChange` callback.
+### 2. Adjusting RLS Security Policies
+* All policies are defined in `supabase-sql/001_complete_setup.sql` and `002_room_monitoring_and_twilio.sql`.
+* If adding user authentication later, replace the `"Allow anon full access"` policies with authenticated checks:
+  ```sql
+  CREATE POLICY "Allow authenticated read" ON medications
+    FOR SELECT TO authenticated USING (true);
+  ```

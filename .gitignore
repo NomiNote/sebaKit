@@ -24,8 +24,8 @@ Desktop.ini
 *~
 
 # ── Environment ──────────────────────────────
-.env
-.env.local
+#.env
+#.env.local
 
 # ── Misc ─────────────────────────────────────
 *.log
