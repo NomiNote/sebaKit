@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import SchedulePage from './pages/Schedule';
 import HistoryPage from './pages/History';
 import SettingsPage from './pages/Settings';
+import ReloadPrompt from './components/ReloadPrompt';
 
 export default function App() {
   useSupabaseRealtime();
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
       <BottomNav />
+      <ReloadPrompt />
       <AlertOverlay />
     </div>
   );

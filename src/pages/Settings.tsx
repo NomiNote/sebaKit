@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { getDeviceSettings, updateDeviceSettings } from '../api/supabase-client';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 export default function Settings() {
   const deviceSettings = useStore((s) => s.deviceSettings);
@@ -16,6 +17,12 @@ export default function Settings() {
   const [twilioEnabled, setTwilioEnabled] = useState(deviceSettings?.twilio_call_enabled ?? true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const { isInstallable, isInstalled, install } = usePWAInstall();
+
+  const handleInstallClick = async () => {
+    await install();
+  };
 
   useEffect(() => {
     getDeviceSettings()
@@ -162,6 +169,34 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* App Installation */}
+      <div className="bg-white rounded-2xl border border-cream-200 shadow-sm p-5 space-y-4">
+        <h3 className="font-display text-sm text-gray-900">App Installation</h3>
+
+        {isInstalled ? (
+          <div className="flex items-center gap-2 text-sage-600 bg-sage-50/50 border border-sage-100 p-3.5 rounded-xl text-xs">
+            <span className="font-semibold text-lg">✓</span>
+            <div>
+              <p className="font-medium">ShebaKit is Installed</p>
+              <p className="text-gray-400 font-normal">Running as a standalone web app.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Install ShebaKit on your device for quick offline access, a cleaner standalone interface, and native-like performance.
+            </p>
+            <button
+              id="settings-install-pwa-btn"
+              onClick={handleInstallClick}
+              className="w-full py-2.5 bg-sage-500 hover:bg-sage-600 text-white rounded-xl text-xs font-semibold shadow-sm transition-all active:scale-[0.98]"
+            >
+              Install ShebaKit App
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Device Info */}
       <div className="bg-white rounded-2xl border border-cream-200 shadow-sm p-5 space-y-3">
         <h3 className="font-display text-sm text-gray-900">Device Info</h3>
@@ -209,4 +244,5 @@ function MessageIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
 

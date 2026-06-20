@@ -12,6 +12,7 @@ import {
 import PatientCard from '../components/PatientCard';
 import RoomMonitor from '../components/RoomMonitor';
 import StreakWidget from '../components/StreakWidget';
+import PWAInstallBanner from '../components/PWAInstallBanner';
 import type { TodayDose } from '../lib/database.types';
 
 /** Convert "HH:MM" (24h) → "h:mm AM/PM" */
@@ -118,6 +119,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-4">
       <PatientCard />
+      <PWAInstallBanner />
 
       {/* Status hero */}
       <div className={`bg-gradient-to-br ${heroColor} rounded-2xl p-5 text-white shadow-lg`}>
