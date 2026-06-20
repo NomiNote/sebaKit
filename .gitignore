@@ -31,3 +31,6 @@ Desktop.ini
 *.log
 task.md
 walkthrough.md
+
+# build files
+dist/
